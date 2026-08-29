@@ -1,0 +1,28 @@
+# ---------- Flutter ----------
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+
+# ---------- Android ----------
+app/android/.gradle/
+app/android/local.properties
+
+# ---------- iOS ----------
+app/ios/Pods/
+app/ios/.symlinks/
+app/ios/Flutter/ephemeral/
+
+# ---------- macOS ----------
+.DS_Store
+
+# ---------- VS Code ----------
+.vscode/
+
+# ---------- Logs ----------
+*.log
+
+# ---------- Environment ----------
+.env
+.env.*
