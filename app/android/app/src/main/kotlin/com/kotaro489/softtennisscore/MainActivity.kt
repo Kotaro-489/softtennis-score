@@ -1,4 +1,4 @@
-package com.example.softtennis_score
+package com.kotaro489.softtennisscore
 
 import io.flutter.embedding.android.FlutterActivity
 
