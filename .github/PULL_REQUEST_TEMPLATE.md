@@ -1,18 +1,23 @@
+# Pull Request
 
-# 概要
+## Spec
 
-変更内容を一言で。
+例: Spec001 Match Create
 
-## 変更内容
+## 実装内容
 
-* [ ]
+-
 
 ## 動作確認
 
-* [ ] Android
-* [ ] iPhone
+- [ ] iPhone Simulator
+- [ ] Android Emulator
 
-## 関連Issue
+## チェック
 
-Closes #
+- [ ] flutter analyze
+- [ ] flutter test
 
+## スクリーンショット
+
+（必要なら添付）
