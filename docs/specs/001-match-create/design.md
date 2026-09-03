@@ -1,81 +1,23 @@
-# Design 001: 試合作成
+# Design 001: 試合作成と得点記録
+
+## 依存方向
+
+`CreateMatchView / ScoreView → MatchController → MatchRepository` とする。得点計算はFlutterに依存しない `ScoreRuleEngine` が担う。
+
+## 主要モデル
+
+- `MatchRecord`: 試合設定とポイントイベント履歴
+- `PointEvent`: 得点側、任意の理由、時刻
+- `MatchFormatPreset`: 5・7・9・練習3ゲームのルール値
+- `ScoreSnapshot`: 再計算されたゲーム、ポイント、サービス案内、終了状態
 
 ## 画面
 
-CreateMatchView
+1. 試合作成: ペア／選手名、形式、先行サービスを設定する。
+2. 得点入力: 自分・相手の大きな得点ボタン、現在のスコアとサービス案内、取消、任意の理由チップを表示する。
+3. 履歴: 完了試合の結果を一覧表示し、確認後に削除する。
+4. 集計: 勝率、ゲーム・ポイント取得率、得点理由を表示する。
 
-## 目的
+## 永続化
 
-試合開始前に試合ルールを設定し、スコア入力画面へ遷移する。
-
-## 画面構成
-
-------------------------------------
-SoftTennis Score
-
-自チーム名
-[____________]
-
-相手チーム名
-[____________]
-
-ゲーム数
-
-(○)3
-( )5
-( )7
-
-デュース
-
-[ ON / OFF ]
-
-────────────
-
-[ 試合開始 ]
-------------------------------------
-
-## 遷移
-
-CreateMatchView
-      │
-      ▼
-ScoreInputView
-
-## MVVM構成
-
-View
-CreateMatchView
-
-ViewModel
-CreateMatchViewModel
-
-Model
-MatchRule
-
-Repository
-MatchRepository
-
-## データ構造
-
-### MatchRule
-
-|項目|型|
-|---|---|
-|myTeamName|String|
-|opponentTeamName|String|
-|gameCount|int|
-|deuceEnabled|bool|
-|createdAt|DateTime|
-
-## バリデーション
-
-- チーム名は空不可
-- ゲーム数は3・5・7のみ
-- デュースは初期値ON
-
-## UIルール
-
-- ボタンは44pt以上
-- 片手操作
-- ダークモード対応
-- Material Design
+SQLiteの `matches` テーブルへ、検索用の日時・完了日時とJSON化した試合レコードを保存する。イベント履歴から状態を再計算するため、取消・再開・将来の書出しで同一の値を再現できる。

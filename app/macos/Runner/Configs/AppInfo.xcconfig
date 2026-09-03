@@ -8,7 +8,7 @@
 PRODUCT_NAME = softtennis_score
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.example.softtennisScore
+PRODUCT_BUNDLE_IDENTIFIER = com.kotaro489.softtennisscore
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2026 com.example. All rights reserved.
+PRODUCT_COPYRIGHT = Copyright © 2026 Kotaro-489. All rights reserved.
