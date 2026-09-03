@@ -12,4 +12,4 @@
 - [x] Task 8: 自動統合テスト、実SQLiteテスト、アクセシビリティテスト
 - [x] Task 9: iPhone 16 / Pixel 8での統合テスト・主要導線確認
 - [x] Task 10: Application ID / Bundle IDを `com.kotaro489.softtennisscore` に確定
-- [ ] Task 11: コミット、push、PR、CI確認
+- [x] Task 11: コミット、push、PR、CI確認
