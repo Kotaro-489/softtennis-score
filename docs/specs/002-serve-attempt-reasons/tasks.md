@@ -5,4 +5,4 @@
 - [x] Task 3: フォルト・自動加点・2段階取消のController実装
 - [x] Task 4: 1st／2nd表示、フォルト操作、理由フィルタの画面実装
 - [x] Task 5: 単体、Repository、Widget、統合テスト
-- [ ] Task 6: 両OS確認、コミット、PR、CI確認
+- [x] Task 6: 両OS確認、コミット、PR、CI確認
