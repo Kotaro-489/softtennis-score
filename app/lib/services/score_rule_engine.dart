@@ -29,9 +29,35 @@ class ScoreSnapshot {
   final List<Side> gameWinners;
 }
 
+class PointContext {
+  const PointContext({
+    required this.servingSide,
+    required this.winningSide,
+    required this.serveAttempt,
+  });
+
+  final Side servingSide;
+  final Side winningSide;
+  final ServeAttempt serveAttempt;
+}
+
 /// Flutterに依存しない得点・サービス順の状態遷移。
 class ScoreRuleEngine {
   const ScoreRuleEngine();
+
+  PointContext? contextForPoint(MatchRecord record, String eventId) {
+    final eventIndex = record.events.indexWhere((event) => event.id == eventId);
+    if (eventIndex < 0) return null;
+    final event = record.events[eventIndex];
+    final beforePoint = evaluate(
+      record.copyWith(events: record.events.take(eventIndex).toList()),
+    );
+    return PointContext(
+      servingSide: beforePoint.servingSide,
+      winningSide: event.winningSide,
+      serveAttempt: event.serveAttempt,
+    );
+  }
 
   ScoreSnapshot evaluate(MatchRecord record) {
     var myGames = 0;

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:softtennis_score/models/match_models.dart';
@@ -22,6 +24,16 @@ class MemoryMatchRepository implements MatchRepository {
   Future<void> save(MatchRecord value) async => record = value;
   @override
   Future<void> saveMyPairProfile(MyPairProfile profile) async {}
+}
+
+class BlockingMatchRepository extends MemoryMatchRepository {
+  Completer<void>? saveGate;
+
+  @override
+  Future<void> save(MatchRecord value) async {
+    await saveGate?.future;
+    await super.save(value);
+  }
 }
 
 void main() {
@@ -83,5 +95,83 @@ void main() {
 
     expect(repository.record!.events.first.reason, PointReason.serviceAce);
     expect(repository.record!.events.last.reason, isNull);
+  });
+
+  test('1stフォルトは2ndへ進み、次の通常得点にサービス回数を保存する', () async {
+    final repository = MemoryMatchRepository();
+    final controller = MatchController(repository, const ScoreRuleEngine());
+    await controller.start(initialRecord());
+
+    final outcome = await controller.recordFault();
+    expect(outcome, ServeFaultOutcome.advancedToSecond);
+    expect(repository.record!.events, isEmpty);
+    expect(repository.record!.currentServeAttempt, ServeAttempt.second);
+
+    await controller.addPoint(Side.mine);
+    expect(repository.record!.events.single.serveAttempt, ServeAttempt.second);
+    expect(repository.record!.currentServeAttempt, ServeAttempt.first);
+  });
+
+  test('2ndフォルトはレシーブ側へ得点とダブルフォルト理由を保存する', () async {
+    final repository = MemoryMatchRepository();
+    final controller = MatchController(repository, const ScoreRuleEngine());
+    await controller.start(initialRecord());
+
+    await controller.recordFault();
+    final outcome = await controller.recordFault();
+
+    expect(outcome, ServeFaultOutcome.doubleFaultRecorded);
+    final event = repository.record!.events.single;
+    expect(event.winningSide, Side.opponent);
+    expect(event.reason, PointReason.opponentDoubleFault);
+    expect(event.serveAttempt, ServeAttempt.second);
+    expect(repository.record!.currentServeAttempt, ServeAttempt.first);
+  });
+
+  test('2ndで終了したポイントを取り消すと2ndへ戻り、再取消で1stへ戻る', () async {
+    final repository = MemoryMatchRepository();
+    final controller = MatchController(repository, const ScoreRuleEngine());
+    await controller.start(initialRecord());
+    await controller.recordFault();
+    await controller.addPoint(Side.mine);
+
+    await controller.undo();
+    expect(repository.record!.events, isEmpty);
+    expect(repository.record!.currentServeAttempt, ServeAttempt.second);
+
+    await controller.undo();
+    expect(repository.record!.events, isEmpty);
+    expect(repository.record!.currentServeAttempt, ServeAttempt.first);
+  });
+
+  test('サービス状況と矛盾する得点理由は保存しない', () async {
+    final repository = MemoryMatchRepository();
+    final controller = MatchController(repository, const ScoreRuleEngine());
+    await controller.start(initialRecord());
+
+    expect(
+      await controller.addPoint(Side.mine, reason: PointReason.returnAce),
+      isNull,
+    );
+    expect(repository.record!.events, isEmpty);
+
+    final eventId = await controller.addPoint(Side.mine);
+    await controller.setPointReason(eventId!, PointReason.opponentDoubleFault);
+    expect(repository.record!.events.single.reason, isNull);
+  });
+
+  test('保存中のフォルト二重入力を無視する', () async {
+    final repository = BlockingMatchRepository();
+    final controller = MatchController(repository, const ScoreRuleEngine());
+    await controller.start(initialRecord());
+    repository.saveGate = Completer<void>();
+
+    final first = controller.recordFault();
+    expect(await controller.recordFault(), isNull);
+    repository.saveGate!.complete();
+
+    expect(await first, ServeFaultOutcome.advancedToSecond);
+    expect(repository.record!.events, isEmpty);
+    expect(repository.record!.currentServeAttempt, ServeAttempt.second);
   });
 }

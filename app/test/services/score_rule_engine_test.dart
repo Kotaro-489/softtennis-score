@@ -197,5 +197,25 @@ void main() {
       expect(nextPoint.shouldChangeSides, isFalse);
       expect(nextPoint.shouldChangeService, isFalse);
     });
+
+    test('ポイント時点のサービス側とサービス回数を復元する', () {
+      final base = record(MatchFormatPreset.officialFive, [Side.opponent]);
+      final point = base.events.single;
+      final withSecondServe = base.copyWith(
+        events: [
+          PointEvent(
+            id: point.id,
+            winningSide: point.winningSide,
+            createdAt: point.createdAt,
+            serveAttempt: ServeAttempt.second,
+          ),
+        ],
+      );
+
+      final context = engine.contextForPoint(withSecondServe, point.id);
+      expect(context!.servingSide, Side.mine);
+      expect(context.winningSide, Side.opponent);
+      expect(context.serveAttempt, ServeAttempt.second);
+    });
   });
 }
