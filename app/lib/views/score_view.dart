@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/match_models.dart';
 import '../providers/app_providers.dart';
+import '../services/point_reason_policy.dart';
+import '../viewmodels/match_controller.dart';
 
 class ScoreView extends ConsumerStatefulWidget {
   const ScoreView({super.key, required this.record});
@@ -37,9 +39,48 @@ class _ScoreViewState extends ConsumerState<ScoreView> {
     });
   }
 
+  Future<void> _fault() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    final outcome = await ref
+        .read(matchControllerProvider.notifier)
+        .recordFault();
+    if (!mounted) return;
+    setState(() {
+      _saving = false;
+      _lastPointEventId = null;
+    });
+    if (outcome == ServeFaultOutcome.doubleFaultRecorded) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('ダブルフォルトを記録しました')));
+    }
+  }
+
+  Future<void> _undo() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    await ref.read(matchControllerProvider.notifier).undo();
+    if (!mounted) return;
+    setState(() {
+      _saving = false;
+      _lastPointEventId = null;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    final snapshot = ref.read(scoreRuleEngineProvider).evaluate(widget.record);
+    final engine = ref.read(scoreRuleEngineProvider);
+    final snapshot = engine.evaluate(widget.record);
+    final lastPointContext = _lastPointEventId == null
+        ? null
+        : engine.contextForPoint(widget.record, _lastPointEventId!);
+    final availableReasons = lastPointContext == null
+        ? const <PointReason>[]
+        : const PointReasonPolicy().availableReasons(
+            servingSide: lastPointContext.servingSide,
+            winningSide: lastPointContext.winningSide,
+            serveAttempt: lastPointContext.serveAttempt,
+          );
     if (snapshot.isCompleted) {
       return Scaffold(
         appBar: AppBar(title: const Text('試合終了')),
@@ -79,89 +120,130 @@ class _ScoreViewState extends ConsumerState<ScoreView> {
         title: Text(widget.record.format.label),
         actions: [
           IconButton(
-            onPressed: widget.record.events.isEmpty
+            onPressed:
+                _saving ||
+                    (widget.record.events.isEmpty &&
+                        widget.record.currentServeAttempt == ServeAttempt.first)
                 ? null
-                : () => ref.read(matchControllerProvider.notifier).undo(),
+                : _undo,
             icon: const Icon(Icons.undo),
-            tooltip: '直前のポイントを取り消す',
+            tooltip: widget.record.currentServeAttempt == ServeAttempt.second
+                ? '1stフォルトを取り消す'
+                : '直前のポイントを取り消す',
           ),
         ],
       ),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              Text(
-                snapshot.isFinalGame
-                    ? 'ファイナルゲーム'
-                    : 'ゲーム ${snapshot.myGames + snapshot.opponentGames + 1}',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'サービス: ${snapshot.servingSide.label}・${_nameFor(snapshot.serverId)} ／ レシーブ: ${_nameFor(snapshot.receiverId)}',
-              ),
-              if (snapshot.shouldChangeSides)
-                const Padding(
-                  padding: EdgeInsets.only(top: 8),
-                  child: Chip(label: Text('チェンジサイズ')),
-                ),
-              if (snapshot.shouldChangeService && !snapshot.shouldChangeSides)
-                const Padding(
-                  padding: EdgeInsets.only(top: 8),
-                  child: Chip(label: Text('チェンジサービス')),
-                ),
-              const Spacer(),
-              Row(
-                children: [
-                  Expanded(
-                    child: _scoreCard(
-                      widget.record.myPair.name,
-                      snapshot.myGames,
-                      snapshot.myPoints,
-                      Side.mine,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _scoreCard(
-                      widget.record.opponentPair.name,
-                      snapshot.opponentGames,
-                      snapshot.opponentPoints,
-                      Side.opponent,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              if (_lastPointEventId != null)
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: PointReason.values
-                      .map(
-                        (reason) => ActionChip(
-                          label: Text(reason.label),
-                          onPressed: () async {
-                            setState(() => _saving = true);
-                            await ref
-                                .read(matchControllerProvider.notifier)
-                                .setPointReason(_lastPointEventId!, reason);
-                            if (mounted) {
-                              setState(() {
-                                _saving = false;
-                                _lastPointEventId = null;
-                              });
-                            }
-                          },
+          child: LayoutBuilder(
+            builder: (context, constraints) => SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: IntrinsicHeight(
+                  child: Column(
+                    children: [
+                      Text(
+                        snapshot.isFinalGame
+                            ? 'ファイナルゲーム'
+                            : 'ゲーム ${snapshot.myGames + snapshot.opponentGames + 1}',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'サービス: ${snapshot.servingSide.label}・${_nameFor(snapshot.serverId)} ／ レシーブ: ${_nameFor(snapshot.receiverId)}',
+                      ),
+                      const SizedBox(height: 8),
+                      Chip(
+                        avatar: const Icon(Icons.sports_tennis, size: 18),
+                        label: Text(widget.record.currentServeAttempt.label),
+                      ),
+                      const SizedBox(height: 8),
+                      OutlinedButton.icon(
+                        onPressed: _saving ? null : _fault,
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size.fromHeight(48),
                         ),
-                      )
-                      .toList(),
+                        icon: const Icon(Icons.warning_amber),
+                        label: Text(
+                          widget.record.currentServeAttempt ==
+                                  ServeAttempt.first
+                              ? 'フォルト（2ndへ）'
+                              : 'フォルト（ダブルフォルト）',
+                        ),
+                      ),
+                      if (snapshot.shouldChangeSides)
+                        const Padding(
+                          padding: EdgeInsets.only(top: 8),
+                          child: Chip(label: Text('チェンジサイズ')),
+                        ),
+                      if (snapshot.shouldChangeService &&
+                          !snapshot.shouldChangeSides)
+                        const Padding(
+                          padding: EdgeInsets.only(top: 8),
+                          child: Chip(label: Text('チェンジサービス')),
+                        ),
+                      const Spacer(),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _scoreCard(
+                              widget.record.myPair.name,
+                              snapshot.myGames,
+                              snapshot.myPoints,
+                              Side.mine,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _scoreCard(
+                              widget.record.opponentPair.name,
+                              snapshot.opponentGames,
+                              snapshot.opponentPoints,
+                              Side.opponent,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      if (availableReasons.isNotEmpty)
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: availableReasons
+                              .map(
+                                (reason) => ActionChip(
+                                  label: Text(reason.label),
+                                  onPressed: _saving
+                                      ? null
+                                      : () async {
+                                          final eventId = _lastPointEventId;
+                                          if (eventId == null) return;
+                                          setState(() => _saving = true);
+                                          await ref
+                                              .read(
+                                                matchControllerProvider
+                                                    .notifier,
+                                              )
+                                              .setPointReason(eventId, reason);
+                                          if (mounted) {
+                                            setState(() {
+                                              _saving = false;
+                                              _lastPointEventId = null;
+                                            });
+                                          }
+                                        },
+                                ),
+                              )
+                              .toList(),
+                        ),
+                      const SizedBox(height: 12),
+                      const Text('理由は任意です。急ぐときは次の得点をそのまま押せます。'),
+                    ],
+                  ),
                 ),
-              const SizedBox(height: 12),
-              const Text('理由は任意です。急ぐときは次の得点をそのまま押せます。'),
-            ],
+              ),
+            ),
           ),
         ),
       ),

@@ -30,7 +30,13 @@ class FlowRepository implements MatchRepository {
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('試合作成・得点・取消の主要導線', (tester) async {
+  Future<void> pumpUi(WidgetTester tester) async {
+    for (var frame = 0; frame < 5; frame++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+  }
+
+  testWidgets('試合作成・2ndサービス・得点・取消の主要導線', (tester) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -39,7 +45,7 @@ void main() {
         child: const SoftTennisScoreApp(),
       ),
     );
-    await tester.pumpAndSettle();
+    await pumpUi(tester);
 
     final fields = find.byType(EditableText);
     await tester.enterText(fields.at(1), 'A');
@@ -48,7 +54,7 @@ void main() {
     await tester.enterText(fields.at(4), 'C');
     await tester.enterText(fields.at(5), 'D');
     FocusManager.instance.primaryFocus?.unfocus();
-    await tester.pumpAndSettle();
+    await pumpUi(tester);
     final start = find.text('試合開始');
     await tester.scrollUntilVisible(
       start,
@@ -56,14 +62,32 @@ void main() {
       scrollable: find.byType(Scrollable).first,
     );
     await tester.tap(start);
-    await tester.pumpAndSettle();
+    await pumpUi(tester);
+
+    expect(find.text('1stサービス'), findsOneWidget);
+    await tester.tap(find.text('フォルト（2ndへ）'));
+    await pumpUi(tester);
+    expect(find.text('2ndサービス'), findsOneWidget);
 
     await tester.tap(find.text('＋ 1ポイント').first);
-    await tester.pumpAndSettle();
+    await pumpUi(tester);
     expect(find.text('ポイント 1'), findsOneWidget);
 
     await tester.tap(find.byIcon(Icons.undo));
-    await tester.pumpAndSettle();
+    await pumpUi(tester);
     expect(find.text('ポイント 0'), findsNWidgets(2));
+    expect(find.text('2ndサービス'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.undo));
+    await pumpUi(tester);
+    expect(find.text('1stサービス'), findsOneWidget);
+
+    await tester.tap(find.text('フォルト（2ndへ）'));
+    await pumpUi(tester);
+    await tester.tap(find.text('フォルト（ダブルフォルト）'));
+    await pumpUi(tester);
+
+    expect(find.text('ポイント 1'), findsOneWidget);
+    expect(find.text('ダブルフォルトを記録しました'), findsOneWidget);
   });
 }

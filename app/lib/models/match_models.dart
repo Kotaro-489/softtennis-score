@@ -5,6 +5,15 @@ extension SideX on Side {
   String get label => this == Side.mine ? '自分' : '相手';
 }
 
+enum ServeAttempt { first, second }
+
+extension ServeAttemptX on ServeAttempt {
+  String get label => switch (this) {
+    ServeAttempt.first => '1stサービス',
+    ServeAttempt.second => '2ndサービス',
+  };
+}
+
 enum MatchFormatPreset {
   officialFive,
   officialSeven,
@@ -72,11 +81,13 @@ class PointEvent {
     required this.id,
     required this.winningSide,
     required this.createdAt,
+    this.serveAttempt = ServeAttempt.first,
     this.reason,
   });
   final String id;
   final Side winningSide;
   final DateTime createdAt;
+  final ServeAttempt serveAttempt;
   final PointReason? reason;
 }
 
@@ -90,6 +101,7 @@ class MatchRecord {
     required this.firstServerId,
     required this.firstReceiverId,
     required this.createdAt,
+    this.currentServeAttempt = ServeAttempt.first,
     this.completedAt,
     this.events = const [],
   });
@@ -101,11 +113,13 @@ class MatchRecord {
   final String firstServerId;
   final String firstReceiverId;
   final DateTime createdAt;
+  final ServeAttempt currentServeAttempt;
   final DateTime? completedAt;
   final List<PointEvent> events;
 
   MatchRecord copyWith({
     List<PointEvent>? events,
+    ServeAttempt? currentServeAttempt,
     DateTime? completedAt,
     bool clearCompletedAt = false,
   }) => MatchRecord(
@@ -117,6 +131,7 @@ class MatchRecord {
     firstServerId: firstServerId,
     firstReceiverId: firstReceiverId,
     createdAt: createdAt,
+    currentServeAttempt: currentServeAttempt ?? this.currentServeAttempt,
     completedAt: clearCompletedAt ? null : completedAt ?? this.completedAt,
     events: events ?? this.events,
   );

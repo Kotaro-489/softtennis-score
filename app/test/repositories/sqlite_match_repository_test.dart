@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -9,7 +10,11 @@ void main() {
   sqfliteFfiInit();
   final factory = databaseFactoryFfi;
 
-  MatchRecord record({DateTime? completedAt}) => MatchRecord(
+  MatchRecord record({
+    DateTime? completedAt,
+    ServeAttempt currentServeAttempt = ServeAttempt.first,
+    ServeAttempt pointServeAttempt = ServeAttempt.first,
+  }) => MatchRecord(
     id: 'match-1',
     myPair: const Pair(
       id: 'mine',
@@ -32,12 +37,14 @@ void main() {
     firstServerId: 'm1',
     firstReceiverId: 'o1',
     createdAt: DateTime(2026),
+    currentServeAttempt: currentServeAttempt,
     completedAt: completedAt,
     events: [
       PointEvent(
         id: 'point-1',
         winningSide: Side.mine,
         reason: PointReason.serviceAce,
+        serveAttempt: pointServeAttempt,
         createdAt: DateTime(2026),
       ),
     ],
@@ -57,9 +64,16 @@ void main() {
       await directory.delete(recursive: true);
     });
 
-    await repository.save(record());
+    await repository.save(
+      record(
+        currentServeAttempt: ServeAttempt.second,
+        pointServeAttempt: ServeAttempt.second,
+      ),
+    );
     final restored = await repository.findInProgress();
     expect(restored!.events.single.reason, PointReason.serviceAce);
+    expect(restored.currentServeAttempt, ServeAttempt.second);
+    expect(restored.events.single.serveAttempt, ServeAttempt.second);
 
     await repository.save(record(completedAt: DateTime(2026, 1, 2)));
     expect(await repository.findInProgress(), isNull);
@@ -104,5 +118,41 @@ void main() {
     final restored = await repository.loadMyPairProfile();
     expect(restored!.pairName, 'いつものペア');
     expect(restored.secondPlayerName, 'B');
+  });
+
+  test('旧JSONにサービス回数がない場合は1stとして復元する', () async {
+    final directory = await Directory.systemTemp.createTemp(
+      'softtennis-legacy-payload-',
+    );
+    final path = '${directory.path}/test.db';
+    final writer = SqliteMatchRepository(factory: factory, databasePath: path);
+    await writer.save(record());
+    await writer.close();
+
+    final rawDatabase = await factory.openDatabase(path);
+    final row = (await rawDatabase.query('matches')).single;
+    final payload =
+        jsonDecode(row['payload']! as String) as Map<String, dynamic>;
+    payload.remove('currentServeAttempt');
+    for (final item in payload['events'] as List<dynamic>) {
+      (item as Map<String, dynamic>).remove('serveAttempt');
+    }
+    await rawDatabase.update(
+      'matches',
+      {'payload': jsonEncode(payload)},
+      where: 'id = ?',
+      whereArgs: ['match-1'],
+    );
+    await rawDatabase.close();
+
+    final reader = SqliteMatchRepository(factory: factory, databasePath: path);
+    addTearDown(() async {
+      await reader.close();
+      await directory.delete(recursive: true);
+    });
+
+    final restored = await reader.findInProgress();
+    expect(restored!.currentServeAttempt, ServeAttempt.first);
+    expect(restored.events.single.serveAttempt, ServeAttempt.first);
   });
 }
