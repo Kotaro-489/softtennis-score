@@ -71,11 +71,23 @@ void main() {
 
     await tester.tap(find.text('＋ 1ポイント').first);
     await pumpUi(tester);
-    expect(find.text('ポイント 1'), findsOneWidget);
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('score-points-mine'))).data,
+      '1',
+    );
 
     await tester.tap(find.byIcon(Icons.undo));
     await pumpUi(tester);
-    expect(find.text('ポイント 0'), findsNWidgets(2));
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('score-points-mine'))).data,
+      '0',
+    );
+    expect(
+      tester
+          .widget<Text>(find.byKey(const ValueKey('score-points-opponent')))
+          .data,
+      '0',
+    );
     expect(find.text('2ndサービス'), findsOneWidget);
 
     await tester.tap(find.byIcon(Icons.undo));
@@ -87,7 +99,12 @@ void main() {
     await tester.tap(find.text('フォルト（ダブルフォルト）'));
     await pumpUi(tester);
 
-    expect(find.text('ポイント 1'), findsOneWidget);
+    expect(
+      tester
+          .widget<Text>(find.byKey(const ValueKey('score-points-opponent')))
+          .data,
+      '1',
+    );
     expect(find.text('ダブルフォルトを記録しました'), findsOneWidget);
   });
 }
