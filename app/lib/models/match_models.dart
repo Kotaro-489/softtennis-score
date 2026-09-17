@@ -7,6 +7,8 @@ extension SideX on Side {
 
 enum ServeAttempt { first, second }
 
+enum ScoreInputOwner { phone, watch }
+
 extension ServeAttemptX on ServeAttempt {
   String get label => switch (this) {
     ServeAttempt.first => '1stサービス',
@@ -102,6 +104,9 @@ class MatchRecord {
     required this.firstReceiverId,
     required this.createdAt,
     this.currentServeAttempt = ServeAttempt.first,
+    this.scoreInputOwner = ScoreInputOwner.phone,
+    this.revision = 0,
+    this.watchSessionId,
     this.completedAt,
     this.events = const [],
   });
@@ -114,12 +119,19 @@ class MatchRecord {
   final String firstReceiverId;
   final DateTime createdAt;
   final ServeAttempt currentServeAttempt;
+  final ScoreInputOwner scoreInputOwner;
+  final int revision;
+  final String? watchSessionId;
   final DateTime? completedAt;
   final List<PointEvent> events;
 
   MatchRecord copyWith({
     List<PointEvent>? events,
     ServeAttempt? currentServeAttempt,
+    ScoreInputOwner? scoreInputOwner,
+    int? revision,
+    String? watchSessionId,
+    bool clearWatchSessionId = false,
     DateTime? completedAt,
     bool clearCompletedAt = false,
   }) => MatchRecord(
@@ -132,6 +144,11 @@ class MatchRecord {
     firstReceiverId: firstReceiverId,
     createdAt: createdAt,
     currentServeAttempt: currentServeAttempt ?? this.currentServeAttempt,
+    scoreInputOwner: scoreInputOwner ?? this.scoreInputOwner,
+    revision: revision ?? this.revision,
+    watchSessionId: clearWatchSessionId
+        ? null
+        : watchSessionId ?? this.watchSessionId,
     completedAt: clearCompletedAt ? null : completedAt ?? this.completedAt,
     events: events ?? this.events,
   );

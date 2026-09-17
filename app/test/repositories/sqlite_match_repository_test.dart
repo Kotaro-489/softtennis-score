@@ -14,6 +14,9 @@ void main() {
     DateTime? completedAt,
     ServeAttempt currentServeAttempt = ServeAttempt.first,
     ServeAttempt pointServeAttempt = ServeAttempt.first,
+    ScoreInputOwner scoreInputOwner = ScoreInputOwner.phone,
+    int revision = 0,
+    String? watchSessionId,
   }) => MatchRecord(
     id: 'match-1',
     myPair: const Pair(
@@ -38,6 +41,9 @@ void main() {
     firstReceiverId: 'o1',
     createdAt: DateTime(2026),
     currentServeAttempt: currentServeAttempt,
+    scoreInputOwner: scoreInputOwner,
+    revision: revision,
+    watchSessionId: watchSessionId,
     completedAt: completedAt,
     events: [
       PointEvent(
@@ -68,12 +74,18 @@ void main() {
       record(
         currentServeAttempt: ServeAttempt.second,
         pointServeAttempt: ServeAttempt.second,
+        scoreInputOwner: ScoreInputOwner.watch,
+        revision: 7,
+        watchSessionId: 'session-1',
       ),
     );
     final restored = await repository.findInProgress();
     expect(restored!.events.single.reason, PointReason.serviceAce);
     expect(restored.currentServeAttempt, ServeAttempt.second);
     expect(restored.events.single.serveAttempt, ServeAttempt.second);
+    expect(restored.scoreInputOwner, ScoreInputOwner.watch);
+    expect(restored.revision, 7);
+    expect(restored.watchSessionId, 'session-1');
 
     await repository.save(record(completedAt: DateTime(2026, 1, 2)));
     expect(await repository.findInProgress(), isNull);
@@ -134,6 +146,9 @@ void main() {
     final payload =
         jsonDecode(row['payload']! as String) as Map<String, dynamic>;
     payload.remove('currentServeAttempt');
+    payload.remove('scoreInputOwner');
+    payload.remove('revision');
+    payload.remove('watchSessionId');
     for (final item in payload['events'] as List<dynamic>) {
       (item as Map<String, dynamic>).remove('serveAttempt');
     }
@@ -154,5 +169,8 @@ void main() {
     final restored = await reader.findInProgress();
     expect(restored!.currentServeAttempt, ServeAttempt.first);
     expect(restored.events.single.serveAttempt, ServeAttempt.first);
+    expect(restored.scoreInputOwner, ScoreInputOwner.phone);
+    expect(restored.revision, 0);
+    expect(restored.watchSessionId, isNull);
   });
 }

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/match_models.dart';
 import '../providers/app_providers.dart';
 import '../services/point_reason_policy.dart';
+import '../services/watch_session_gateway.dart';
 import '../viewmodels/match_controller.dart';
 
 class ScoreView extends ConsumerStatefulWidget {
@@ -67,6 +68,64 @@ class _ScoreViewState extends ConsumerState<ScoreView> {
     });
   }
 
+  Future<void> _handoffToWatch() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    final accepted = await ref
+        .read(matchControllerProvider.notifier)
+        .handoffToWatch();
+    if (!mounted) return;
+    setState(() => _saving = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          accepted ? 'Apple Watchで記録を開始しました' : 'Apple Watchへ引き渡せませんでした',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _requestPhoneControl() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    final restored = await ref
+        .read(matchControllerProvider.notifier)
+        .requestPhoneControl();
+    if (!mounted) return;
+    setState(() => _saving = false);
+    if (!restored) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Watchと通信できません。接続を確認してください。')),
+      );
+    }
+  }
+
+  Future<void> _confirmForcePhoneControl() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('強制的にiPhoneへ戻しますか？'),
+        content: const Text(
+          'Watchに未同期の得点がある場合は失われます。Watchを接続できない場合だけ使用してください。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('キャンセル'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('強制的に戻す'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _saving = true);
+    await ref.read(matchControllerProvider.notifier).forcePhoneControl();
+    if (mounted) setState(() => _saving = false);
+  }
+
   @override
   Widget build(BuildContext context) {
     final engine = ref.read(scoreRuleEngineProvider);
@@ -81,6 +140,9 @@ class _ScoreViewState extends ConsumerState<ScoreView> {
             winningSide: lastPointContext.winningSide,
             serveAttempt: lastPointContext.serveAttempt,
           );
+    final watchStatus = ref.watch(watchConnectionStatusProvider).valueOrNull;
+    final watchOwnsInput =
+        widget.record.scoreInputOwner == ScoreInputOwner.watch;
     if (snapshot.isCompleted) {
       return Scaffold(
         appBar: AppBar(title: const Text('試合終了')),
@@ -119,9 +181,18 @@ class _ScoreViewState extends ConsumerState<ScoreView> {
       appBar: AppBar(
         title: Text(widget.record.format.label),
         actions: [
+          if (!watchOwnsInput && watchStatus?.supported == true)
+            IconButton(
+              onPressed: _saving || watchStatus?.canHandoff != true
+                  ? null
+                  : _handoffToWatch,
+              icon: const Icon(Icons.watch),
+              tooltip: 'Apple Watchで記録',
+            ),
           IconButton(
             onPressed:
                 _saving ||
+                    watchOwnsInput ||
                     (widget.record.events.isEmpty &&
                         widget.record.currentServeAttempt == ServeAttempt.first)
                 ? null
@@ -143,6 +214,7 @@ class _ScoreViewState extends ConsumerState<ScoreView> {
                 child: IntrinsicHeight(
                   child: Column(
                     children: [
+                      if (watchOwnsInput) _watchReadOnlyPanel(watchStatus),
                       Text(
                         snapshot.isFinalGame
                             ? 'ファイナルゲーム'
@@ -160,7 +232,7 @@ class _ScoreViewState extends ConsumerState<ScoreView> {
                       ),
                       const SizedBox(height: 8),
                       OutlinedButton.icon(
-                        onPressed: _saving ? null : _fault,
+                        onPressed: _saving || watchOwnsInput ? null : _fault,
                         style: OutlinedButton.styleFrom(
                           minimumSize: const Size.fromHeight(48),
                         ),
@@ -214,7 +286,7 @@ class _ScoreViewState extends ConsumerState<ScoreView> {
                               .map(
                                 (reason) => ActionChip(
                                   label: Text(reason.label),
-                                  onPressed: _saving
+                                  onPressed: _saving || watchOwnsInput
                                       ? null
                                       : () async {
                                           final eventId = _lastPointEventId;
@@ -250,6 +322,43 @@ class _ScoreViewState extends ConsumerState<ScoreView> {
     );
   }
 
+  Widget _watchReadOnlyPanel(WatchConnectionStatus? status) => Card(
+    color: Theme.of(context).colorScheme.secondaryContainer,
+    child: Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'Apple Watchで記録中',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          Text(
+            status?.reachable == true
+                ? '接続中・iPhoneは閲覧専用'
+                : '未接続・Watchで記録を継続できます',
+          ),
+          if (status?.lastSyncAt != null)
+            Text('最終同期: ${_clock(status!.lastSyncAt!)}'),
+          const SizedBox(height: 8),
+          FilledButton(
+            onPressed: _saving || status?.reachable != true
+                ? null
+                : _requestPhoneControl,
+            child: const Text('iPhoneで記録に戻す'),
+          ),
+          TextButton(
+            onPressed: _saving ? null : _confirmForcePhoneControl,
+            child: const Text('接続できない場合は強制的に戻す'),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  String _clock(DateTime value) =>
+      '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
+
   Widget _scoreCard(String name, int games, int points, Side side) => Card(
     child: Padding(
       padding: const EdgeInsets.all(12),
@@ -272,7 +381,11 @@ class _ScoreViewState extends ConsumerState<ScoreView> {
           ),
           const SizedBox(height: 12),
           FilledButton(
-            onPressed: _saving ? null : () => _point(side),
+            onPressed:
+                _saving ||
+                    widget.record.scoreInputOwner == ScoreInputOwner.watch
+                ? null
+                : () => _point(side),
             style: FilledButton.styleFrom(
               minimumSize: const Size.fromHeight(72),
             ),

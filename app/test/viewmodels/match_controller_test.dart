@@ -3,8 +3,10 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:softtennis_score/models/match_models.dart';
+import 'package:softtennis_score/models/watch_sync_envelope.dart';
 import 'package:softtennis_score/repositories/match_repository.dart';
 import 'package:softtennis_score/services/score_rule_engine.dart';
+import 'package:softtennis_score/services/watch_session_gateway.dart';
 import 'package:softtennis_score/viewmodels/match_controller.dart';
 
 class MemoryMatchRepository implements MatchRepository {
@@ -34,6 +36,45 @@ class BlockingMatchRepository extends MemoryMatchRepository {
     await saveGate?.future;
     await super.save(value);
   }
+}
+
+class FakeWatchSessionGateway implements WatchSessionGateway {
+  final eventsController = StreamController<WatchGatewayEvent>.broadcast();
+  var acceptHandoff = true;
+  WatchSyncEnvelope? handedOff;
+  WatchSyncEnvelope? phoneControlResponse;
+  final acknowledged = <String>[];
+  final acknowledgedTypes = <WatchSyncMessageType>[];
+
+  @override
+  Stream<WatchGatewayEvent> get events => eventsController.stream;
+  @override
+  Future<void> ackPersisted(WatchSyncEnvelope envelope) async {
+    acknowledged.add(envelope.messageId);
+    acknowledgedTypes.add(envelope.type);
+  }
+
+  @override
+  Future<WatchSyncEnvelope?> drainPendingEnvelope() async => null;
+  @override
+  Future<void> forcePhoneControl(String staleWatchSessionId) async {}
+  @override
+  Future<WatchConnectionStatus> getStatus() async =>
+      const WatchConnectionStatus(
+        supported: true,
+        paired: true,
+        appInstalled: true,
+        reachable: true,
+      );
+  @override
+  Future<bool> handoffMatch(WatchSyncEnvelope envelope) async {
+    handedOff = envelope;
+    return acceptHandoff;
+  }
+
+  @override
+  Future<WatchSyncEnvelope?> requestPhoneControl(String watchSessionId) async =>
+      phoneControlResponse;
 }
 
 void main() {
@@ -174,4 +215,120 @@ void main() {
     expect(repository.record!.events, isEmpty);
     expect(repository.record!.currentServeAttempt, ServeAttempt.second);
   });
+
+  test('得点・フォルト・理由・取消ごとにrevisionを増やす', () async {
+    final repository = MemoryMatchRepository();
+    final controller = MatchController(repository, const ScoreRuleEngine());
+    await controller.start(initialRecord());
+
+    await controller.recordFault();
+    expect(repository.record!.revision, 1);
+    final eventID = await controller.addPoint(Side.mine);
+    expect(repository.record!.revision, 2);
+    await controller.setPointReason(eventID!, PointReason.serviceAce);
+    expect(repository.record!.revision, 3);
+    await controller.undo();
+    expect(repository.record!.revision, 4);
+  });
+
+  test('Watch保存成功後だけ編集権をWatchへ移す', () async {
+    final repository = MemoryMatchRepository();
+    final gateway = FakeWatchSessionGateway();
+    final controller = MatchController(
+      repository,
+      const ScoreRuleEngine(),
+      watchGateway: gateway,
+    );
+    await controller.start(initialRecord());
+
+    expect(await controller.handoffToWatch(), isTrue);
+    expect(repository.record!.scoreInputOwner, ScoreInputOwner.watch);
+    expect(repository.record!.revision, 1);
+    expect(gateway.handedOff!.watchSessionId, isNotEmpty);
+    expect(await controller.addPoint(Side.mine), isNull);
+  });
+
+  test('Watch引き渡し失敗時はiPhone編集を維持する', () async {
+    final repository = MemoryMatchRepository();
+    final gateway = FakeWatchSessionGateway()..acceptHandoff = false;
+    final controller = MatchController(
+      repository,
+      const ScoreRuleEngine(),
+      watchGateway: gateway,
+    );
+    await controller.start(initialRecord());
+
+    expect(await controller.handoffToWatch(), isFalse);
+    expect(repository.record!.scoreInputOwner, ScoreInputOwner.phone);
+  });
+
+  test('古いrevisionと異なるセッションを無視し、新しい状態だけ永続化する', () async {
+    final repository = MemoryMatchRepository();
+    final gateway = FakeWatchSessionGateway();
+    final controller = MatchController(
+      repository,
+      const ScoreRuleEngine(),
+      watchGateway: gateway,
+    );
+    await controller.start(initialRecord());
+    await controller.handoffToWatch();
+    final handedOff = repository.record!;
+
+    WatchSyncEnvelope envelope(MatchRecord match, String messageId) =>
+        WatchSyncEnvelope(
+          schemaVersion: 1,
+          messageId: messageId,
+          type: WatchSyncMessageType.snapshot,
+          matchId: match.id,
+          watchSessionId: match.watchSessionId!,
+          revision: match.revision,
+          sentAt: DateTime(2026),
+          match: match,
+        );
+
+    gateway.eventsController.add(envelope(handedOff, 'duplicate').asEvent());
+    await Future<void>.delayed(Duration.zero);
+    expect(gateway.acknowledged, isEmpty);
+
+    final newer = handedOff.copyWith(revision: handedOff.revision + 1);
+    gateway.eventsController.add(WatchEnvelopeReceived(envelope(newer, 'new')));
+    await Future<void>.delayed(Duration.zero);
+    expect(repository.record!.revision, newer.revision);
+    expect(gateway.acknowledged, ['new']);
+  });
+
+  test('同一revisionでも最新状態を確認してiPhoneへ編集権を戻せる', () async {
+    final repository = MemoryMatchRepository();
+    final gateway = FakeWatchSessionGateway();
+    final controller = MatchController(
+      repository,
+      const ScoreRuleEngine(),
+      watchGateway: gateway,
+    );
+    await controller.start(initialRecord());
+    await controller.handoffToWatch();
+    final watchRecord = repository.record!;
+    gateway.phoneControlResponse = WatchSyncEnvelope(
+      schemaVersion: 1,
+      messageId: 'return-control',
+      type: WatchSyncMessageType.snapshot,
+      matchId: watchRecord.id,
+      watchSessionId: watchRecord.watchSessionId!,
+      revision: watchRecord.revision,
+      sentAt: DateTime(2026),
+      match: watchRecord,
+    );
+
+    expect(await controller.requestPhoneControl(), isTrue);
+    expect(repository.record!.scoreInputOwner, ScoreInputOwner.phone);
+    expect(repository.record!.watchSessionId, isNull);
+    expect(
+      gateway.acknowledgedTypes,
+      contains(WatchSyncMessageType.requestPhoneControl),
+    );
+  });
+}
+
+extension on WatchSyncEnvelope {
+  WatchGatewayEvent asEvent() => WatchEnvelopeReceived(this);
 }

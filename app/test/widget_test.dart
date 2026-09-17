@@ -212,4 +212,37 @@ void main() {
     expect(find.text('リターンエース'), findsOneWidget);
     expect(find.text('相手のダブルフォルト'), findsOneWidget);
   });
+
+  testWidgets('Watch編集中はiPhoneを閲覧専用にする', (tester) async {
+    final record = activeRecord().copyWith(
+      scoreInputOwner: ScoreInputOwner.watch,
+      revision: 1,
+      watchSessionId: 'watch-1',
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          matchRepositoryProvider.overrideWithValue(
+            FakeMatchRepository(active: record),
+          ),
+        ],
+        child: const SoftTennisScoreApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Apple Watchで記録中'), findsOneWidget);
+    final scoreButtons = tester.widgetList<FilledButton>(
+      find.widgetWithText(FilledButton, '＋ 1ポイント'),
+    );
+    expect(scoreButtons.every((button) => button.onPressed == null), isTrue);
+    expect(
+      tester
+          .widget<OutlinedButton>(
+            find.widgetWithText(OutlinedButton, 'フォルト（2ndへ）'),
+          )
+          .onPressed,
+      isNull,
+    );
+  });
 }
