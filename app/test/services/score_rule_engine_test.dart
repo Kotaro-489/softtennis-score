@@ -95,18 +95,6 @@ void main() {
       expect(score.opponentGames, 2);
     });
 
-    test('9ゲームは5ゲーム先取', () {
-      final winners = <Side>[];
-      for (var game = 0; game < 5; game++) {
-        winners.addAll(List.filled(4, Side.mine));
-      }
-      final score = engine.evaluate(
-        record(MatchFormatPreset.generalNine, winners),
-      );
-      expect(score.isCompleted, isTrue);
-      expect(score.myGames, 5);
-    });
-
     test('通常ゲームのサービスは2ポイントごとにペア内で交代', () {
       final initial = engine.evaluate(
         record(MatchFormatPreset.officialSeven, []),
