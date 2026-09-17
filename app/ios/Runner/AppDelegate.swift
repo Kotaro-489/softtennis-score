@@ -7,10 +7,14 @@ import UIKit
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
+    _ = PhoneWatchConnectivityBridge.shared
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    PhoneWatchConnectivityBridge.shared.attach(
+      to: engineBridge.applicationRegistrar.messenger()
+    )
   }
 }

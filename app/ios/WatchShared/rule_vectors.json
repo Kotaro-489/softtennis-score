@@ -1,0 +1,44 @@
+[
+  {
+    "name": "通常ゲームとチェンジサイズ",
+    "format": "officialFive",
+    "winners": ["mine", "mine", "mine", "mine"],
+    "expected": {"myGames": 1, "opponentGames": 0, "myPoints": 0, "opponentPoints": 0, "servingSide": "opponent", "serverId": "o1", "receiverId": "m1", "shouldChangeSides": true, "shouldChangeService": true, "isCompleted": false}
+  },
+  {
+    "name": "デュース反復",
+    "format": "officialFive",
+    "winners": ["mine", "mine", "mine", "opponent", "opponent", "opponent", "mine", "opponent", "mine", "mine"],
+    "expected": {"myGames": 1, "opponentGames": 0, "myPoints": 0, "opponentPoints": 0, "servingSide": "opponent", "serverId": "o1", "receiverId": "m1", "shouldChangeSides": true, "shouldChangeService": true, "isCompleted": false}
+  },
+  {
+    "name": "3ゲーム練習ノーアド",
+    "format": "practiceThree",
+    "winners": ["mine", "mine", "mine", "opponent", "opponent", "opponent", "mine"],
+    "expected": {"myGames": 1, "opponentGames": 0, "myPoints": 0, "opponentPoints": 0, "servingSide": "opponent", "serverId": "o1", "receiverId": "m1", "shouldChangeSides": true, "shouldChangeService": true, "isCompleted": false}
+  },
+  {
+    "name": "5ゲーム形式の試合終了",
+    "format": "officialFive",
+    "winners": ["mine", "mine", "mine", "mine", "mine", "mine", "mine", "mine", "mine", "mine", "mine", "mine"],
+    "expected": {"myGames": 3, "opponentGames": 0, "myPoints": 4, "opponentPoints": 0, "servingSide": "opponent", "serverId": "o1", "receiverId": "m1", "shouldChangeSides": true, "shouldChangeService": true, "isCompleted": true}
+  },
+  {
+    "name": "ファイナルゲーム2ポイント後",
+    "format": "officialFive",
+    "winners": ["mine", "mine", "mine", "mine", "mine", "mine", "mine", "mine", "opponent", "opponent", "opponent", "opponent", "opponent", "opponent", "opponent", "opponent", "mine", "mine"],
+    "expected": {"myGames": 2, "opponentGames": 2, "myPoints": 2, "opponentPoints": 0, "servingSide": "opponent", "serverId": "o1", "receiverId": "m1", "shouldChangeSides": true, "shouldChangeService": true, "isCompleted": false}
+  },
+  {
+    "name": "7ゲーム形式の試合終了",
+    "format": "officialSeven",
+    "winners": ["opponent", "opponent", "opponent", "opponent", "opponent", "opponent", "opponent", "opponent", "opponent", "opponent", "opponent", "opponent", "opponent", "opponent", "opponent", "opponent"],
+    "expected": {"myGames": 0, "opponentGames": 4, "myPoints": 0, "opponentPoints": 4, "servingSide": "mine", "serverId": "m1", "receiverId": "o1", "shouldChangeSides": false, "shouldChangeService": true, "isCompleted": true}
+  },
+  {
+    "name": "9ゲーム形式の試合終了",
+    "format": "generalNine",
+    "winners": ["mine", "mine", "mine", "mine", "mine", "mine", "mine", "mine", "mine", "mine", "mine", "mine", "mine", "mine", "mine", "mine", "mine", "mine", "mine", "mine"],
+    "expected": {"myGames": 5, "opponentGames": 0, "myPoints": 4, "opponentPoints": 0, "servingSide": "opponent", "serverId": "o1", "receiverId": "m1", "shouldChangeSides": true, "shouldChangeService": true, "isCompleted": true}
+  }
+]
