@@ -18,6 +18,7 @@ void main() {
           .toList();
       final record = _record(
         format: MatchFormatPreset.values.byName(vector['format'] as String),
+        deuceEnabled: vector['deuceEnabled'] as bool,
         winners: winners,
       );
       final actual = const ScoreRuleEngine().evaluate(record);
@@ -79,6 +80,7 @@ void main() {
 
 MatchRecord _record({
   required MatchFormatPreset format,
+  required bool deuceEnabled,
   required List<Side> winners,
 }) => MatchRecord(
   id: 'vector',
@@ -99,6 +101,7 @@ MatchRecord _record({
     ],
   ),
   format: format,
+  deuceEnabled: deuceEnabled,
   firstServingSide: Side.mine,
   firstServerId: 'm1',
   firstReceiverId: 'o1',

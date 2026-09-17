@@ -16,6 +16,7 @@ class MatchRecordCodec {
     'myPair': _pairMap(record.myPair),
     'opponentPair': _pairMap(record.opponentPair),
     'format': record.format.name,
+    'deuceEnabled': record.deuceEnabled,
     'firstServingSide': record.firstServingSide.name,
     'firstServerId': record.firstServerId,
     'firstReceiverId': record.firstReceiverId,
@@ -38,41 +39,45 @@ class MatchRecordCodec {
         .toList(),
   };
 
-  MatchRecord fromMap(Map<String, dynamic> map) => MatchRecord(
-    id: map['id'] as String,
-    myPair: _pairFromMap(_stringMap(map['myPair'])),
-    opponentPair: _pairFromMap(_stringMap(map['opponentPair'])),
-    format: MatchFormatPreset.values.byName(map['format'] as String),
-    firstServingSide: Side.values.byName(map['firstServingSide'] as String),
-    firstServerId: map['firstServerId'] as String,
-    firstReceiverId: map['firstReceiverId'] as String,
-    currentServeAttempt: map['currentServeAttempt'] == null
-        ? ServeAttempt.first
-        : ServeAttempt.values.byName(map['currentServeAttempt'] as String),
-    scoreInputOwner: map['scoreInputOwner'] == null
-        ? ScoreInputOwner.phone
-        : ScoreInputOwner.values.byName(map['scoreInputOwner'] as String),
-    revision: (map['revision'] as num?)?.toInt() ?? 0,
-    watchSessionId: map['watchSessionId'] as String?,
-    createdAt: DateTime.parse(map['createdAt'] as String),
-    completedAt: map['completedAt'] == null
-        ? null
-        : DateTime.parse(map['completedAt'] as String),
-    events: (map['events'] as List<dynamic>).map((item) {
-      final event = _stringMap(item);
-      return PointEvent(
-        id: event['id'] as String,
-        winningSide: Side.values.byName(event['winningSide'] as String),
-        reason: event['reason'] == null
-            ? null
-            : PointReason.values.byName(event['reason'] as String),
-        serveAttempt: event['serveAttempt'] == null
-            ? ServeAttempt.first
-            : ServeAttempt.values.byName(event['serveAttempt'] as String),
-        createdAt: DateTime.parse(event['createdAt'] as String),
-      );
-    }).toList(),
-  );
+  MatchRecord fromMap(Map<String, dynamic> map) {
+    final format = MatchFormatPreset.values.byName(map['format'] as String);
+    return MatchRecord(
+      id: map['id'] as String,
+      myPair: _pairFromMap(_stringMap(map['myPair'])),
+      opponentPair: _pairFromMap(_stringMap(map['opponentPair'])),
+      format: format,
+      deuceEnabled: map['deuceEnabled'] as bool? ?? format.defaultDeuceEnabled,
+      firstServingSide: Side.values.byName(map['firstServingSide'] as String),
+      firstServerId: map['firstServerId'] as String,
+      firstReceiverId: map['firstReceiverId'] as String,
+      currentServeAttempt: map['currentServeAttempt'] == null
+          ? ServeAttempt.first
+          : ServeAttempt.values.byName(map['currentServeAttempt'] as String),
+      scoreInputOwner: map['scoreInputOwner'] == null
+          ? ScoreInputOwner.phone
+          : ScoreInputOwner.values.byName(map['scoreInputOwner'] as String),
+      revision: (map['revision'] as num?)?.toInt() ?? 0,
+      watchSessionId: map['watchSessionId'] as String?,
+      createdAt: DateTime.parse(map['createdAt'] as String),
+      completedAt: map['completedAt'] == null
+          ? null
+          : DateTime.parse(map['completedAt'] as String),
+      events: (map['events'] as List<dynamic>).map((item) {
+        final event = _stringMap(item);
+        return PointEvent(
+          id: event['id'] as String,
+          winningSide: Side.values.byName(event['winningSide'] as String),
+          reason: event['reason'] == null
+              ? null
+              : PointReason.values.byName(event['reason'] as String),
+          serveAttempt: event['serveAttempt'] == null
+              ? ServeAttempt.first
+              : ServeAttempt.values.byName(event['serveAttempt'] as String),
+          createdAt: DateTime.parse(event['createdAt'] as String),
+        );
+      }).toList(),
+    );
+  }
 
   Map<String, dynamic> _pairMap(Pair pair) => {
     'id': pair.id,

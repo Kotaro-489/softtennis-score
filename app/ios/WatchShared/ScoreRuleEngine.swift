@@ -50,7 +50,7 @@ struct SwiftScoreRuleEngine {
       pointsInGame += 1
       if event.winningSide == .mine { myPoints += 1 } else { opponentPoints += 1 }
       let finalGame = isFinal(record.format, myGames, opponentGames)
-      if winsGame(record.format, myPoints, opponentPoints, finalGame) {
+      if winsGame(record.deuceEnabled, myPoints, opponentPoints, finalGame) {
         if myPoints > opponentPoints { myGames += 1 } else { opponentGames += 1 }
         changedSides = !finalGame && (myGames + opponentGames).isMultiple(of: 2) == false
         changedService = true
@@ -89,14 +89,14 @@ struct SwiftScoreRuleEngine {
   }
 
   private func winsGame(
-    _ format: MatchFormatDTO,
+    _ deuceEnabled: Bool,
     _ mine: Int,
     _ opponent: Int,
     _ finalGame: Bool
   ) -> Bool {
     let target = finalGame ? 7 : 4
     let high = max(mine, opponent)
-    return high >= target && (format.isNoAd || abs(mine - opponent) >= 2)
+    return high >= target && (!deuceEnabled || abs(mine - opponent) >= 2)
   }
 
   private func service(

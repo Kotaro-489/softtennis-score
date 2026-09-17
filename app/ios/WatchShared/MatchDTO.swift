@@ -33,7 +33,7 @@ enum MatchFormatDTO: String, Codable {
   }
 
   var gamesToWin: Int { maximumGames / 2 + 1 }
-  var isNoAd: Bool { self == .practiceThree }
+  var defaultDeuceEnabled: Bool { self != .practiceThree }
 }
 
 enum PointReasonDTO: String, Codable, CaseIterable, Identifiable {
@@ -84,6 +84,7 @@ struct MatchRecordDTO: Codable, Equatable, Identifiable {
   let myPair: PairDTO
   let opponentPair: PairDTO
   let format: MatchFormatDTO
+  let deuceEnabled: Bool
   let firstServingSide: MatchSide
   let firstServerId: String
   let firstReceiverId: String
@@ -96,7 +97,7 @@ struct MatchRecordDTO: Codable, Equatable, Identifiable {
   var events: [PointEventDTO]
 
   enum CodingKeys: String, CodingKey {
-    case id, myPair, opponentPair, format, firstServingSide
+    case id, myPair, opponentPair, format, deuceEnabled, firstServingSide
     case firstServerId, firstReceiverId, createdAt, currentServeAttempt
     case scoreInputOwner, revision, watchSessionId, completedAt, events
   }
@@ -107,6 +108,10 @@ struct MatchRecordDTO: Codable, Equatable, Identifiable {
     myPair = try container.decode(PairDTO.self, forKey: .myPair)
     opponentPair = try container.decode(PairDTO.self, forKey: .opponentPair)
     format = try container.decode(MatchFormatDTO.self, forKey: .format)
+    deuceEnabled = try container.decodeIfPresent(
+      Bool.self,
+      forKey: .deuceEnabled
+    ) ?? format.defaultDeuceEnabled
     firstServingSide = try container.decode(MatchSide.self, forKey: .firstServingSide)
     firstServerId = try container.decode(String.self, forKey: .firstServerId)
     firstReceiverId = try container.decode(String.self, forKey: .firstReceiverId)
@@ -130,6 +135,7 @@ struct MatchRecordDTO: Codable, Equatable, Identifiable {
     myPair: PairDTO,
     opponentPair: PairDTO,
     format: MatchFormatDTO,
+    deuceEnabled: Bool,
     firstServingSide: MatchSide,
     firstServerId: String,
     firstReceiverId: String,
@@ -145,6 +151,7 @@ struct MatchRecordDTO: Codable, Equatable, Identifiable {
     self.myPair = myPair
     self.opponentPair = opponentPair
     self.format = format
+    self.deuceEnabled = deuceEnabled
     self.firstServingSide = firstServingSide
     self.firstServerId = firstServerId
     self.firstReceiverId = firstReceiverId
@@ -166,7 +173,7 @@ enum WatchSyncMessageTypeDTO: String, Codable {
 }
 
 struct WatchSyncEnvelopeDTO: Codable, Equatable {
-  static let currentSchemaVersion = 1
+  static let currentSchemaVersion = 2
 
   let schemaVersion: Int
   let messageId: String

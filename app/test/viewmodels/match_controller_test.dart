@@ -97,6 +97,7 @@ void main() {
       ],
     ),
     format: MatchFormatPreset.officialFive,
+    deuceEnabled: true,
     firstServingSide: Side.mine,
     firstServerId: 'm1',
     firstReceiverId: 'o1',
@@ -244,6 +245,8 @@ void main() {
     expect(await controller.handoffToWatch(), isTrue);
     expect(repository.record!.scoreInputOwner, ScoreInputOwner.watch);
     expect(repository.record!.revision, 1);
+    expect(gateway.handedOff!.schemaVersion, 2);
+    expect(gateway.handedOff!.match!.deuceEnabled, isTrue);
     expect(gateway.handedOff!.watchSessionId, isNotEmpty);
     expect(await controller.addPoint(Side.mine), isNull);
   });
@@ -274,23 +277,33 @@ void main() {
     await controller.handoffToWatch();
     final handedOff = repository.record!;
 
-    WatchSyncEnvelope envelope(MatchRecord match, String messageId) =>
-        WatchSyncEnvelope(
-          schemaVersion: 1,
-          messageId: messageId,
-          type: WatchSyncMessageType.snapshot,
-          matchId: match.id,
-          watchSessionId: match.watchSessionId!,
-          revision: match.revision,
-          sentAt: DateTime(2026),
-          match: match,
-        );
+    WatchSyncEnvelope envelope(
+      MatchRecord match,
+      String messageId, {
+      int schemaVersion = WatchSyncEnvelope.currentSchemaVersion,
+    }) => WatchSyncEnvelope(
+      schemaVersion: schemaVersion,
+      messageId: messageId,
+      type: WatchSyncMessageType.snapshot,
+      matchId: match.id,
+      watchSessionId: match.watchSessionId!,
+      revision: match.revision,
+      sentAt: DateTime(2026),
+      match: match,
+    );
 
     gateway.eventsController.add(envelope(handedOff, 'duplicate').asEvent());
     await Future<void>.delayed(Duration.zero);
     expect(gateway.acknowledged, isEmpty);
 
     final newer = handedOff.copyWith(revision: handedOff.revision + 1);
+    gateway.eventsController.add(
+      envelope(newer, 'legacy-schema', schemaVersion: 1).asEvent(),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(repository.record!.revision, handedOff.revision);
+    expect(gateway.acknowledged, isEmpty);
+
     gateway.eventsController.add(WatchEnvelopeReceived(envelope(newer, 'new')));
     await Future<void>.delayed(Duration.zero);
     expect(repository.record!.revision, newer.revision);
@@ -309,7 +322,7 @@ void main() {
     await controller.handoffToWatch();
     final watchRecord = repository.record!;
     gateway.phoneControlResponse = WatchSyncEnvelope(
-      schemaVersion: 1,
+      schemaVersion: WatchSyncEnvelope.currentSchemaVersion,
       messageId: 'return-control',
       type: WatchSyncMessageType.snapshot,
       matchId: watchRecord.id,

@@ -8,9 +8,12 @@ final class ScoreRuleEngineTests: XCTestCase {
 
     for vector in raw {
       let format = MatchFormatDTO(rawValue: vector["format"] as! String)!
+      let deuceEnabled = vector["deuceEnabled"] as! Bool
       let winners = (vector["winners"] as! [String]).map { MatchSide(rawValue: $0)! }
       let expected = vector["expected"] as! [String: Any]
-      let actual = SwiftScoreRuleEngine().evaluate(record(format: format, winners: winners))
+      let actual = SwiftScoreRuleEngine().evaluate(
+        record(format: format, deuceEnabled: deuceEnabled, winners: winners)
+      )
 
       XCTAssertEqual(actual.myGames, expected["myGames"] as? Int, vector["name"] as! String)
       XCTAssertEqual(actual.opponentGames, expected["opponentGames"] as? Int)
@@ -25,6 +28,55 @@ final class ScoreRuleEngineTests: XCTestCase {
     }
   }
 
+  func testEveryFormatUsesConfiguredDeuceRuleForRegularGames() {
+    let winners: [MatchSide] = [
+      .mine, .mine, .mine, .opponent, .opponent, .opponent, .mine,
+    ]
+    for format in allFormats {
+      let deuce = SwiftScoreRuleEngine().evaluate(
+        record(format: format, deuceEnabled: true, winners: winners)
+      )
+      XCTAssertEqual(deuce.myGames, 0, format.rawValue)
+      XCTAssertEqual(deuce.myPoints, 4, format.rawValue)
+      XCTAssertEqual(deuce.opponentPoints, 3, format.rawValue)
+
+      let noDeuce = SwiftScoreRuleEngine().evaluate(
+        record(format: format, deuceEnabled: false, winners: winners)
+      )
+      XCTAssertEqual(noDeuce.myGames, 1, format.rawValue)
+      XCTAssertEqual(noDeuce.myPoints, 0, format.rawValue)
+    }
+  }
+
+  func testEveryFormatUsesConfiguredDeuceRuleForFinalGames() {
+    let sixAll = Array(repeating: [MatchSide.mine, .opponent], count: 6).flatMap { $0 }
+    for format in allFormats {
+      var tiedGames: [MatchSide] = []
+      for _ in 0..<(format.maximumGames / 2) {
+        tiedGames += Array(repeating: .mine, count: 4)
+        tiedGames += Array(repeating: .opponent, count: 4)
+      }
+      let advantage = tiedGames + sixAll + [.mine]
+      let deuce = SwiftScoreRuleEngine().evaluate(
+        record(format: format, deuceEnabled: true, winners: advantage)
+      )
+      XCTAssertFalse(deuce.isCompleted, format.rawValue)
+      XCTAssertEqual(deuce.myPoints, 7, format.rawValue)
+      XCTAssertEqual(deuce.opponentPoints, 6, format.rawValue)
+
+      let noDeuce = SwiftScoreRuleEngine().evaluate(
+        record(format: format, deuceEnabled: false, winners: advantage)
+      )
+      XCTAssertTrue(noDeuce.isCompleted, format.rawValue)
+      XCTAssertEqual(noDeuce.myGames, format.gamesToWin, format.rawValue)
+
+      let completedDeuce = SwiftScoreRuleEngine().evaluate(
+        record(format: format, deuceEnabled: true, winners: advantage + [.mine])
+      )
+      XCTAssertTrue(completedDeuce.isCompleted, format.rawValue)
+    }
+  }
+
   func testReasonPolicyUsesServeAttempt() {
     let policy = SwiftPointReasonPolicy()
     XCTAssertEqual(
@@ -35,6 +87,44 @@ final class ScoreRuleEngineTests: XCTestCase {
       policy.availableReasons(servingSide: .mine, winningSide: .opponent, serveAttempt: .second)
         .contains(.opponentDoubleFault)
     )
+  }
+
+  func testLegacyMatchDefaultsDeuceRuleFromFormat() throws {
+    for format in allFormats {
+      let value = record(format: format, winners: [])
+      let encoded = try JSONEncoder().encode(value)
+      var object = try XCTUnwrap(
+        JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+      )
+      object.removeValue(forKey: "deuceEnabled")
+      let legacyData = try JSONSerialization.data(withJSONObject: object)
+      let restored = try JSONDecoder().decode(MatchRecordDTO.self, from: legacyData)
+      XCTAssertEqual(restored.deuceEnabled, format.defaultDeuceEnabled)
+    }
+  }
+
+  @MainActor
+  func testLegacySchemaHandoffIsRejected() {
+    let file = FileManager.default.temporaryDirectory
+      .appendingPathComponent("\(UUID().uuidString).json")
+    defer { try? FileManager.default.removeItem(at: file) }
+    let store = WatchMatchStore(fileURL: file)
+    var match = record(format: .officialFive, winners: [])
+    match.scoreInputOwner = .watch
+    match.watchSessionId = "watch-1"
+    let envelope = WatchSyncEnvelopeDTO(
+      schemaVersion: 1,
+      messageId: "legacy",
+      type: .handoff,
+      matchId: match.id,
+      watchSessionId: "watch-1",
+      revision: match.revision,
+      sentAt: SharedClock.now(),
+      match: match
+    )
+
+    XCTAssertFalse(store.acceptHandoff(envelope))
+    XCTAssertNil(store.record)
   }
 
   @MainActor
@@ -51,6 +141,7 @@ final class ScoreRuleEngineTests: XCTestCase {
       myPair: match.myPair,
       opponentPair: match.opponentPair,
       format: match.format,
+      deuceEnabled: match.deuceEnabled,
       firstServingSide: match.firstServingSide,
       firstServerId: match.firstServerId,
       firstReceiverId: match.firstReceiverId,
@@ -60,7 +151,7 @@ final class ScoreRuleEngineTests: XCTestCase {
       watchSessionId: "watch-1"
     )
     let envelope = WatchSyncEnvelopeDTO(
-      schemaVersion: 1,
+      schemaVersion: WatchSyncEnvelopeDTO.currentSchemaVersion,
       messageId: "handoff",
       type: .handoff,
       matchId: watchMatch.id,
@@ -89,7 +180,7 @@ final class ScoreRuleEngineTests: XCTestCase {
     match.scoreInputOwner = .watch
     match.watchSessionId = "watch-1"
     let envelope = WatchSyncEnvelopeDTO(
-      schemaVersion: 1,
+      schemaVersion: WatchSyncEnvelopeDTO.currentSchemaVersion,
       messageId: "handoff",
       type: .handoff,
       matchId: match.id,
@@ -109,7 +200,11 @@ final class ScoreRuleEngineTests: XCTestCase {
     XCTAssertEqual(store.record?.currentServeAttempt, .first)
   }
 
-  private func record(format: MatchFormatDTO, winners: [MatchSide]) -> MatchRecordDTO {
+  private func record(
+    format: MatchFormatDTO,
+    deuceEnabled: Bool? = nil,
+    winners: [MatchSide]
+  ) -> MatchRecordDTO {
     MatchRecordDTO(
       id: "vector",
       myPair: PairDTO(id: "mine", name: "自分", players: [
@@ -119,6 +214,7 @@ final class ScoreRuleEngineTests: XCTestCase {
         PlayerDTO(id: "o1", name: "C"), PlayerDTO(id: "o2", name: "D"),
       ]),
       format: format,
+      deuceEnabled: deuceEnabled ?? format.defaultDeuceEnabled,
       firstServingSide: .mine,
       firstServerId: "m1",
       firstReceiverId: "o1",
@@ -133,5 +229,9 @@ final class ScoreRuleEngineTests: XCTestCase {
         )
       }
     )
+  }
+
+  private var allFormats: [MatchFormatDTO] {
+    [.practiceThree, .officialFive, .officialSeven, .generalNine]
   }
 }

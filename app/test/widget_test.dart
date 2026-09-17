@@ -5,6 +5,7 @@ import 'package:softtennis_score/main.dart';
 import 'package:softtennis_score/models/match_models.dart';
 import 'package:softtennis_score/providers/app_providers.dart';
 import 'package:softtennis_score/repositories/match_repository.dart';
+import 'package:softtennis_score/views/history_view.dart';
 import 'package:softtennis_score/views/score_view.dart';
 
 class FakeMatchRepository implements MatchRepository {
@@ -27,7 +28,7 @@ class FakeMatchRepository implements MatchRepository {
 }
 
 void main() {
-  MatchRecord activeRecord() => MatchRecord(
+  MatchRecord activeRecord({bool deuceEnabled = true}) => MatchRecord(
     id: 'match',
     myPair: const Pair(
       id: 'mine',
@@ -46,6 +47,7 @@ void main() {
       ],
     ),
     format: MatchFormatPreset.officialFive,
+    deuceEnabled: deuceEnabled,
     firstServingSide: Side.mine,
     firstServerId: 'm1',
     firstReceiverId: 'o1',
@@ -64,6 +66,55 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('試合を作成'), findsOneWidget);
+    expect(find.text('デュース'), findsOneWidget);
+    expect(
+      tester
+          .widget<SegmentedButton<bool>>(find.byType(SegmentedButton<bool>))
+          .selected,
+      {true},
+    );
+  });
+
+  testWidgets('形式変更時に従来値へ戻し、選択したデュース設定を保存する', (tester) async {
+    final repository = FakeMatchRepository();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [matchRepositoryProvider.overrideWithValue(repository)],
+        child: const SoftTennisScoreApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(DropdownButtonFormField<MatchFormatPreset>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('3ゲーム').last);
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<SegmentedButton<bool>>(find.byType(SegmentedButton<bool>))
+          .selected,
+      {false},
+    );
+
+    await tester.tap(find.text('あり'));
+    await tester.pumpAndSettle();
+    final fields = find.byType(TextField);
+    await tester.enterText(fields.at(1), 'A');
+    await tester.enterText(fields.at(2), 'B');
+    await tester.enterText(fields.at(3), '相手ペア');
+    await tester.enterText(fields.at(4), 'C');
+    await tester.enterText(fields.at(5), 'D');
+    final start = find.widgetWithText(FilledButton, '試合開始');
+    await tester.scrollUntilVisible(
+      start,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(start);
+    await tester.pumpAndSettle();
+
+    expect(repository.active!.format, MatchFormatPreset.practiceThree);
+    expect(repository.active!.deuceEnabled, isTrue);
   });
 
   testWidgets('文字を拡大しても操作ボタンは44px以上ある', (tester) async {
@@ -80,6 +131,13 @@ void main() {
     );
     await tester.pumpAndSettle();
     final button = find.widgetWithText(FilledButton, '試合開始');
+    final deuceControl = find.byType(SegmentedButton<bool>);
+    await tester.scrollUntilVisible(
+      deuceControl,
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(tester.getSize(deuceControl).height, greaterThanOrEqualTo(44));
     await tester.scrollUntilVisible(
       button,
       300,
@@ -153,6 +211,23 @@ void main() {
     expect(games.data, 'ゲーム 0');
     expect(points.style!.fontSize, greaterThan(games.style!.fontSize!));
     expect(points.style!.fontWeight, FontWeight.bold);
+    expect(find.text('デュースあり'), findsOneWidget);
+  });
+
+  testWidgets('履歴詳細にデュース設定を表示する', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          matchRepositoryProvider.overrideWithValue(FakeMatchRepository()),
+        ],
+        child: MaterialApp(
+          home: MatchDetailView(record: activeRecord(deuceEnabled: false)),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('5ゲーム・デュースなし'), findsOneWidget);
   });
 
   testWidgets('フォルト操作で1stから2ndへ切り替わる', (tester) async {

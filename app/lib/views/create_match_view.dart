@@ -19,6 +19,7 @@ class _CreateMatchViewState extends ConsumerState<CreateMatchView> {
   final _opponentFirst = TextEditingController();
   final _opponentSecond = TextEditingController();
   MatchFormatPreset _format = MatchFormatPreset.officialFive;
+  var _deuceEnabled = MatchFormatPreset.officialFive.defaultDeuceEnabled;
   Side _servingSide = Side.mine;
   var _serverIndex = 0;
   var _receiverIndex = 0;
@@ -85,6 +86,7 @@ class _CreateMatchViewState extends ConsumerState<CreateMatchView> {
         players: opponentPlayers,
       ),
       format: _format,
+      deuceEnabled: _deuceEnabled,
       firstServingSide: _servingSide,
       firstServerId: _servingSide == Side.mine
           ? myPlayers[_serverIndex].id
@@ -178,7 +180,26 @@ class _CreateMatchViewState extends ConsumerState<CreateMatchView> {
                   ),
                 )
                 .toList(),
-            onChanged: (value) => setState(() => _format = value!),
+            onChanged: (value) => setState(() {
+              _format = value!;
+              _deuceEnabled = value.defaultDeuceEnabled;
+            }),
+          ),
+          const SizedBox(height: 12),
+          Text('デュース', style: Theme.of(context).textTheme.labelLarge),
+          SegmentedButton<bool>(
+            segments: const [
+              ButtonSegment(value: true, label: Text('あり')),
+              ButtonSegment(value: false, label: Text('なし')),
+            ],
+            selected: {_deuceEnabled},
+            onSelectionChanged: (value) =>
+                setState(() => _deuceEnabled = value.first),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            _deuceEnabled ? '3-3／6-6以降は2点差で決着します。' : '3-3／6-6の次の1点で決着します。',
+            style: Theme.of(context).textTheme.bodySmall,
           ),
           const SizedBox(height: 12),
           Text('先にサービスするペア', style: Theme.of(context).textTheme.labelLarge),

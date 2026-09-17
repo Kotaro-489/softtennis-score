@@ -31,13 +31,13 @@ extension MatchFormatPresetX on MatchFormatPreset {
     MatchFormatPreset.practiceThree => 3,
   };
   int get gamesToWin => (maximumGames ~/ 2) + 1;
-  bool get isNoAd => this == MatchFormatPreset.practiceThree;
+  bool get defaultDeuceEnabled => this != MatchFormatPreset.practiceThree;
   bool get isOfficial => this != MatchFormatPreset.practiceThree;
   String get label => switch (this) {
-    MatchFormatPreset.officialFive => '5ゲーム（公式）',
-    MatchFormatPreset.officialSeven => '7ゲーム（公式）',
-    MatchFormatPreset.generalNine => '9ゲーム（一般）',
-    MatchFormatPreset.practiceThree => '3ゲーム（練習）',
+    MatchFormatPreset.officialFive => '5ゲーム',
+    MatchFormatPreset.officialSeven => '7ゲーム',
+    MatchFormatPreset.generalNine => '9ゲーム',
+    MatchFormatPreset.practiceThree => '3ゲーム',
   };
 }
 
@@ -99,6 +99,7 @@ class MatchRecord {
     required this.myPair,
     required this.opponentPair,
     required this.format,
+    required this.deuceEnabled,
     required this.firstServingSide,
     required this.firstServerId,
     required this.firstReceiverId,
@@ -114,6 +115,7 @@ class MatchRecord {
   final Pair myPair;
   final Pair opponentPair;
   final MatchFormatPreset format;
+  final bool deuceEnabled;
   final Side firstServingSide;
   final String firstServerId;
   final String firstReceiverId;
@@ -139,6 +141,7 @@ class MatchRecord {
     myPair: myPair,
     opponentPair: opponentPair,
     format: format,
+    deuceEnabled: deuceEnabled,
     firstServingSide: firstServingSide,
     firstServerId: firstServerId,
     firstReceiverId: firstReceiverId,

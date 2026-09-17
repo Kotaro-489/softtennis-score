@@ -23,6 +23,7 @@ void main() {
       ],
     ),
     format: MatchFormatPreset.officialSeven,
+    deuceEnabled: false,
     firstServingSide: Side.mine,
     firstServerId: 'm1',
     firstReceiverId: 'o1',
@@ -38,10 +39,22 @@ void main() {
     final restored = codec.decode(codec.encode(record()));
 
     expect(restored.id, 'match-1');
+    expect(restored.deuceEnabled, isFalse);
     expect(restored.currentServeAttempt, ServeAttempt.second);
     expect(restored.scoreInputOwner, ScoreInputOwner.watch);
     expect(restored.revision, 4);
     expect(restored.watchSessionId, 'watch-1');
+  });
+
+  test('旧JSONはゲーム形式ごとの従来値でデュース設定を復元する', () {
+    const codec = MatchRecordCodec();
+    final official = codec.toMap(record())..remove('deuceEnabled');
+    expect(codec.fromMap(official).deuceEnabled, isTrue);
+
+    final practice = codec.toMap(record())
+      ..['format'] = MatchFormatPreset.practiceThree.name
+      ..remove('deuceEnabled');
+    expect(codec.fromMap(practice).deuceEnabled, isFalse);
   });
 
   test('同期Envelopeを共通Mapで往復できる', () {
@@ -57,8 +70,10 @@ void main() {
     );
 
     final restored = WatchSyncEnvelope.fromMap(envelope.toMap());
+    expect(restored.schemaVersion, 2);
     expect(restored.messageId, 'message-1');
     expect(restored.match!.revision, 4);
+    expect(restored.match!.deuceEnabled, isFalse);
     expect(restored.sentAt, DateTime.utc(2026));
   });
 }
