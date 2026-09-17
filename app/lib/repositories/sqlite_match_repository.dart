@@ -4,14 +4,19 @@ import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../models/match_models.dart';
+import '../models/match_record_codec.dart';
 import 'match_repository.dart';
 
 class SqliteMatchRepository implements MatchRepository {
-  SqliteMatchRepository({DatabaseFactory? factory, this.databasePath})
-    : _factory = factory ?? databaseFactory;
+  SqliteMatchRepository({
+    DatabaseFactory? factory,
+    this.databasePath,
+    this.codec = const MatchRecordCodec(),
+  }) : _factory = factory ?? databaseFactory;
 
   final DatabaseFactory _factory;
   final String? databasePath;
+  final MatchRecordCodec codec;
   Database? _database;
 
   Future<void> close() async {
@@ -55,7 +60,7 @@ class SqliteMatchRepository implements MatchRepository {
       'id': record.id,
       'completedAt': record.completedAt?.toIso8601String(),
       'createdAt': record.createdAt.toIso8601String(),
-      'payload': jsonEncode(_toMap(record)),
+      'payload': codec.encode(record),
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
@@ -70,7 +75,7 @@ class SqliteMatchRepository implements MatchRepository {
     );
     return rows.isEmpty
         ? null
-        : _fromMap(
+        : codec.fromMap(
             jsonDecode(rows.first['payload']! as String)
                 as Map<String, dynamic>,
           );
@@ -86,7 +91,7 @@ class SqliteMatchRepository implements MatchRepository {
     );
     return rows
         .map(
-          (row) => _fromMap(
+          (row) => codec.fromMap(
             jsonDecode(row['payload']! as String) as Map<String, dynamic>,
           ),
         )
@@ -126,76 +131,4 @@ class SqliteMatchRepository implements MatchRepository {
       }),
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
-
-  Map<String, dynamic> _toMap(MatchRecord record) => {
-    'id': record.id,
-    'myPair': _pairMap(record.myPair),
-    'opponentPair': _pairMap(record.opponentPair),
-    'format': record.format.name,
-    'firstServingSide': record.firstServingSide.name,
-    'firstServerId': record.firstServerId,
-    'firstReceiverId': record.firstReceiverId,
-    'currentServeAttempt': record.currentServeAttempt.name,
-    'createdAt': record.createdAt.toIso8601String(),
-    'completedAt': record.completedAt?.toIso8601String(),
-    'events': record.events
-        .map(
-          (event) => {
-            'id': event.id,
-            'winningSide': event.winningSide.name,
-            'reason': event.reason?.name,
-            'serveAttempt': event.serveAttempt.name,
-            'createdAt': event.createdAt.toIso8601String(),
-          },
-        )
-        .toList(),
-  };
-
-  Map<String, dynamic> _pairMap(Pair pair) => {
-    'id': pair.id,
-    'name': pair.name,
-    'players': pair.players
-        .map((player) => {'id': player.id, 'name': player.name})
-        .toList(),
-  };
-
-  MatchRecord _fromMap(Map<String, dynamic> map) => MatchRecord(
-    id: map['id'] as String,
-    myPair: _pairFromMap(map['myPair'] as Map<String, dynamic>),
-    opponentPair: _pairFromMap(map['opponentPair'] as Map<String, dynamic>),
-    format: MatchFormatPreset.values.byName(map['format'] as String),
-    firstServingSide: Side.values.byName(map['firstServingSide'] as String),
-    firstServerId: map['firstServerId'] as String,
-    firstReceiverId: map['firstReceiverId'] as String,
-    currentServeAttempt: map['currentServeAttempt'] == null
-        ? ServeAttempt.first
-        : ServeAttempt.values.byName(map['currentServeAttempt'] as String),
-    createdAt: DateTime.parse(map['createdAt'] as String),
-    completedAt: map['completedAt'] == null
-        ? null
-        : DateTime.parse(map['completedAt'] as String),
-    events: (map['events'] as List<dynamic>).map((item) {
-      final event = item as Map<String, dynamic>;
-      return PointEvent(
-        id: event['id'] as String,
-        winningSide: Side.values.byName(event['winningSide'] as String),
-        reason: event['reason'] == null
-            ? null
-            : PointReason.values.byName(event['reason'] as String),
-        serveAttempt: event['serveAttempt'] == null
-            ? ServeAttempt.first
-            : ServeAttempt.values.byName(event['serveAttempt'] as String),
-        createdAt: DateTime.parse(event['createdAt'] as String),
-      );
-    }).toList(),
-  );
-
-  Pair _pairFromMap(Map<String, dynamic> map) => Pair(
-    id: map['id'] as String,
-    name: map['name'] as String,
-    players: (map['players'] as List<dynamic>).map((item) {
-      final player = item as Map<String, dynamic>;
-      return Player(id: player['id'] as String, name: player['name'] as String);
-    }).toList(),
-  );
 }
