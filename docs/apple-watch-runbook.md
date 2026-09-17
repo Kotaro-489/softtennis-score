@@ -32,4 +32,5 @@ Watchの「設定」>「一般」>「時計に戻る」からSoftTennis Scoreを
 1. CIのFlutter解析・全テスト・Swiftテスト・Watch Releaseビルドを成功させる。
 2. Watch実行ファイルに`armv7k`スライスが含まれることを確認する。
 3. 実機で通信切断中に試合を完了し、再接続後に履歴が完全一致することを確認する。
-4. Xcode 26.3でRunnerをArchiveし、Validate Appを成功させる。
+4. CIで未署名のRunnerアーカイブとWatch同梱構成が成功していることを確認する。
+5. Apple Developer署名を設定したXcode 26.3でRunnerをArchiveし、Validate Appを成功させる。

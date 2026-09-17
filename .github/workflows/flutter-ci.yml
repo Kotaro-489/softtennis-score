@@ -93,3 +93,26 @@ jobs:
           -destination 'platform=watchOS Simulator,name=Apple Watch Series 10 (46mm)'
           -derivedDataPath build/watch-test-derived-data
           CODE_SIGNING_ALLOWED=NO
+
+      - name: Archive iPhone app with Watch companion
+        run: >-
+          xcodebuild archive
+          -workspace ios/Runner.xcworkspace
+          -scheme Runner
+          -configuration Release
+          -destination 'generic/platform=iOS'
+          -archivePath build/SoftTennisScore.xcarchive
+          -derivedDataPath build/archive-derived-data
+          CODE_SIGNING_ALLOWED=NO
+
+      - name: Verify archived Watch companion
+        run: |
+          PHONE_APP="build/SoftTennisScore.xcarchive/Products/Applications/Runner.app"
+          WATCH_APP="$PHONE_APP/Watch/SoftTennisScoreWatch.app"
+          WATCH_BINARY="$WATCH_APP/SoftTennisScoreWatch"
+          test -d "$PHONE_APP"
+          test -d "$WATCH_APP"
+          test -f "$WATCH_BINARY"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$WATCH_APP/Info.plist")" = 'com.kotaro489.softtennisscore.watchapp'
+          test "$(/usr/libexec/PlistBuddy -c 'Print :WKCompanionAppBundleIdentifier' "$WATCH_APP/Info.plist")" = 'com.kotaro489.softtennisscore'
+          xcrun lipo -archs "$WATCH_BINARY" | grep -w armv7k
