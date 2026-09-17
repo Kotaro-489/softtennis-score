@@ -256,11 +256,20 @@ class _ScoreViewState extends ConsumerState<ScoreView> {
       child: Column(
         children: [
           Text(name, textAlign: TextAlign.center),
+          const SizedBox(height: 8),
+          Text('ポイント', style: Theme.of(context).textTheme.labelLarge),
           Text(
-            '$games',
-            style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold),
+            '$points',
+            key: ValueKey('score-points-${side.name}'),
+            style: const TextStyle(fontSize: 64, fontWeight: FontWeight.bold),
+            textAlign: TextAlign.center,
           ),
-          Text('ポイント $points'),
+          Text(
+            'ゲーム $games',
+            key: ValueKey('score-games-${side.name}'),
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+            textAlign: TextAlign.center,
+          ),
           const SizedBox(height: 12),
           FilledButton(
             onPressed: _saving ? null : () => _point(side),

@@ -130,6 +130,31 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('得点画面はポイントをゲーム数より大きく表示する', (tester) async {
+    final record = activeRecord();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          matchRepositoryProvider.overrideWithValue(FakeMatchRepository()),
+        ],
+        child: MaterialApp(home: ScoreView(record: record)),
+      ),
+    );
+    await tester.pump();
+
+    final points = tester.widget<Text>(
+      find.byKey(const ValueKey('score-points-mine')),
+    );
+    final games = tester.widget<Text>(
+      find.byKey(const ValueKey('score-games-mine')),
+    );
+
+    expect(points.data, '0');
+    expect(games.data, 'ゲーム 0');
+    expect(points.style!.fontSize, greaterThan(games.style!.fontSize!));
+    expect(points.style!.fontWeight, FontWeight.bold);
+  });
+
   testWidgets('フォルト操作で1stから2ndへ切り替わる', (tester) async {
     final repository = FakeMatchRepository(active: activeRecord());
     await tester.pumpWidget(
