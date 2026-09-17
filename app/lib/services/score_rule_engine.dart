@@ -81,7 +81,7 @@ class ScoreRuleEngine {
         opponentPoints++;
       }
       final finalGame = _isFinal(record.format, myGames, opponentGames);
-      if (_winsGame(record.format, myPoints, opponentPoints, finalGame)) {
+      if (_winsGame(record.deuceEnabled, myPoints, opponentPoints, finalGame)) {
         final winner = myPoints > opponentPoints ? Side.mine : Side.opponent;
         if (winner == Side.mine) {
           myGames++;
@@ -134,16 +134,10 @@ class ScoreRuleEngine {
   bool _isFinal(MatchFormatPreset format, int mine, int opponent) =>
       mine == format.maximumGames ~/ 2 && opponent == format.maximumGames ~/ 2;
 
-  bool _winsGame(
-    MatchFormatPreset format,
-    int mine,
-    int opponent,
-    bool finalGame,
-  ) {
+  bool _winsGame(bool deuceEnabled, int mine, int opponent, bool finalGame) {
     final target = finalGame ? 7 : 4;
-    final noAd = format.isNoAd;
     final high = mine > opponent ? mine : opponent;
-    return high >= target && (noAd || (mine - opponent).abs() >= 2);
+    return high >= target && (!deuceEnabled || (mine - opponent).abs() >= 2);
   }
 
   (Side, String, String) _service(

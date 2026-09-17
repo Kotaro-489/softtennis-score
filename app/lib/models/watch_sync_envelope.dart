@@ -15,7 +15,7 @@ class WatchSyncEnvelope {
     this.match,
   });
 
-  static const currentSchemaVersion = 1;
+  static const currentSchemaVersion = 2;
 
   final int schemaVersion;
   final String messageId;

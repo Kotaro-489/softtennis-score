@@ -25,6 +25,7 @@ void main() {
         ],
       ),
       format: MatchFormatPreset.practiceThree,
+      deuceEnabled: false,
       firstServingSide: Side.mine,
       firstServerId: 'm1',
       firstReceiverId: 'o1',

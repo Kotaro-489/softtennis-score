@@ -125,7 +125,7 @@ final class PhoneWatchConnectivityBridge: NSObject {
     UserDefaults.standard.set(revision, forKey: "watchLastAckRevision")
     if arguments["releaseControl"] as? Bool == true { invalidate(sessionID: sessionID) }
     let payload: [String: Any] = [
-      "schemaVersion": 1,
+      "schemaVersion": 2,
       "messageId": UUID().uuidString,
       "type": "ack",
       "matchId": arguments["matchId"] as? String ?? "",

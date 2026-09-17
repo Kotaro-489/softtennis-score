@@ -221,6 +221,10 @@ class _ScoreViewState extends ConsumerState<ScoreView> {
                             : 'ゲーム ${snapshot.myGames + snapshot.opponentGames + 1}',
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
+                      Text(
+                        widget.record.deuceEnabled ? 'デュースあり' : 'デュースなし',
+                        style: Theme.of(context).textTheme.labelMedium,
+                      ),
                       const SizedBox(height: 8),
                       Text(
                         'サービス: ${snapshot.servingSide.label}・${_nameFor(snapshot.serverId)} ／ レシーブ: ${_nameFor(snapshot.receiverId)}',

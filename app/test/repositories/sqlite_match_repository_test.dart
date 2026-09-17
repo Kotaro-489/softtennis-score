@@ -15,6 +15,7 @@ void main() {
     ServeAttempt currentServeAttempt = ServeAttempt.first,
     ServeAttempt pointServeAttempt = ServeAttempt.first,
     ScoreInputOwner scoreInputOwner = ScoreInputOwner.phone,
+    bool deuceEnabled = true,
     int revision = 0,
     String? watchSessionId,
   }) => MatchRecord(
@@ -36,6 +37,7 @@ void main() {
       ],
     ),
     format: MatchFormatPreset.officialFive,
+    deuceEnabled: deuceEnabled,
     firstServingSide: Side.mine,
     firstServerId: 'm1',
     firstReceiverId: 'o1',
@@ -81,6 +83,7 @@ void main() {
     );
     final restored = await repository.findInProgress();
     expect(restored!.events.single.reason, PointReason.serviceAce);
+    expect(restored.deuceEnabled, isTrue);
     expect(restored.currentServeAttempt, ServeAttempt.second);
     expect(restored.events.single.serveAttempt, ServeAttempt.second);
     expect(restored.scoreInputOwner, ScoreInputOwner.watch);
@@ -149,6 +152,7 @@ void main() {
     payload.remove('scoreInputOwner');
     payload.remove('revision');
     payload.remove('watchSessionId');
+    payload.remove('deuceEnabled');
     for (final item in payload['events'] as List<dynamic>) {
       (item as Map<String, dynamic>).remove('serveAttempt');
     }
@@ -168,6 +172,7 @@ void main() {
 
     final restored = await reader.findInProgress();
     expect(restored!.currentServeAttempt, ServeAttempt.first);
+    expect(restored.deuceEnabled, isTrue);
     expect(restored.events.single.serveAttempt, ServeAttempt.first);
     expect(restored.scoreInputOwner, ScoreInputOwner.phone);
     expect(restored.revision, 0);

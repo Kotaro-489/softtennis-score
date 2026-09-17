@@ -102,7 +102,10 @@ class MatchDetailView extends ConsumerWidget {
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 8),
-          Text(record.format.label, textAlign: TextAlign.center),
+          Text(
+            '${record.format.label}・${record.deuceEnabled ? 'デュースあり' : 'デュースなし'}',
+            textAlign: TextAlign.center,
+          ),
           const Divider(height: 32),
           Text('ポイント履歴', style: Theme.of(context).textTheme.titleLarge),
           for (var index = 0; index < record.events.length; index++)

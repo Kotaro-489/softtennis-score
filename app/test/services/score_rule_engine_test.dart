@@ -5,7 +5,11 @@ import 'package:softtennis_score/services/score_rule_engine.dart';
 void main() {
   const engine = ScoreRuleEngine();
 
-  MatchRecord record(MatchFormatPreset format, List<Side> winners) {
+  MatchRecord record(
+    MatchFormatPreset format,
+    List<Side> winners, {
+    bool? deuceEnabled,
+  }) {
     final now = DateTime(2026);
     return MatchRecord(
       id: 'match',
@@ -26,6 +30,7 @@ void main() {
         ],
       ),
       format: format,
+      deuceEnabled: deuceEnabled ?? format.defaultDeuceEnabled,
       firstServingSide: Side.mine,
       firstServerId: 'm1',
       firstReceiverId: 'o1',
@@ -64,19 +69,30 @@ void main() {
       expect(score.myGames, 1);
     });
 
-    test('練習3ゲームはノーアドで4ポイント目が決着', () {
-      final score = engine.evaluate(
-        record(MatchFormatPreset.practiceThree, [
-          Side.mine,
-          Side.mine,
-          Side.mine,
-          Side.opponent,
-          Side.opponent,
-          Side.opponent,
-          Side.opponent,
-        ]),
-      );
-      expect(score.opponentGames, 1);
+    test('全形式でデュース有無に応じて通常ゲームの決着条件が変わる', () {
+      const threeAllThenMine = [
+        Side.mine,
+        Side.mine,
+        Side.mine,
+        Side.opponent,
+        Side.opponent,
+        Side.opponent,
+        Side.mine,
+      ];
+      for (final format in MatchFormatPreset.values) {
+        final deuce = engine.evaluate(
+          record(format, threeAllThenMine, deuceEnabled: true),
+        );
+        expect(deuce.myGames, 0, reason: format.name);
+        expect(deuce.myPoints, 4, reason: format.name);
+        expect(deuce.opponentPoints, 3, reason: format.name);
+
+        final noDeuce = engine.evaluate(
+          record(format, threeAllThenMine, deuceEnabled: false),
+        );
+        expect(noDeuce.myGames, 1, reason: format.name);
+        expect(noDeuce.myPoints, 0, reason: format.name);
+      }
     });
 
     test('5ゲームの同点最終ゲームは7ポイント先取', () {
@@ -119,34 +135,37 @@ void main() {
       }
     });
 
-    test('ファイナルゲームは6-6から2ポイント差を必要とする', () {
-      final tiedGames = [
-        ...List.filled(4, Side.mine),
-        ...List.filled(4, Side.opponent),
-        ...List.filled(4, Side.mine),
-        ...List.filled(4, Side.opponent),
-      ];
+    test('全形式でデュース有無に応じてファイナルゲームの決着条件が変わる', () {
       final sixAll = <Side>[];
       for (var index = 0; index < 6; index++) {
         sixAll.addAll([Side.mine, Side.opponent]);
       }
-      final advantage = engine.evaluate(
-        record(MatchFormatPreset.officialFive, [
-          ...tiedGames,
-          ...sixAll,
-          Side.mine,
-        ]),
-      );
-      expect(advantage.isCompleted, isFalse);
-      final completed = engine.evaluate(
-        record(MatchFormatPreset.officialFive, [
-          ...tiedGames,
-          ...sixAll,
-          Side.mine,
-          Side.mine,
-        ]),
-      );
-      expect(completed.isCompleted, isTrue);
+      for (final format in MatchFormatPreset.values) {
+        final tiedGames = <Side>[];
+        for (var index = 0; index < format.maximumGames ~/ 2; index++) {
+          tiedGames
+            ..addAll(List.filled(4, Side.mine))
+            ..addAll(List.filled(4, Side.opponent));
+        }
+        final advantage = [...tiedGames, ...sixAll, Side.mine];
+        final deuce = engine.evaluate(
+          record(format, advantage, deuceEnabled: true),
+        );
+        expect(deuce.isCompleted, isFalse, reason: format.name);
+        expect(deuce.myPoints, 7, reason: format.name);
+        expect(deuce.opponentPoints, 6, reason: format.name);
+
+        final noDeuce = engine.evaluate(
+          record(format, advantage, deuceEnabled: false),
+        );
+        expect(noDeuce.isCompleted, isTrue, reason: format.name);
+        expect(noDeuce.myGames, format.gamesToWin, reason: format.name);
+
+        final completedDeuce = engine.evaluate(
+          record(format, [...advantage, Side.mine], deuceEnabled: true),
+        );
+        expect(completedDeuce.isCompleted, isTrue, reason: format.name);
+      }
     });
 
     test('ファイナルゲームは2ポイントごとに両ペアの選手が順番にサービスする', () {
