@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:softtennis_score/models/match_models.dart';
 import 'package:softtennis_score/services/score_rule_engine.dart';
 
+import '../support/match_fixtures.dart';
+
 void main() {
   test('Swiftと共有するJSONルールベクトルに一致する', () {
     final vectors = jsonDecode(
@@ -16,7 +18,7 @@ void main() {
       final winners = (vector['winners'] as List<dynamic>)
           .map((value) => Side.values.byName(value as String))
           .toList();
-      final record = _record(
+      final record = matchRecord(
         format: MatchFormatPreset.values.byName(vector['format'] as String),
         deuceEnabled: vector['deuceEnabled'] as bool,
         winners: winners,
@@ -77,41 +79,3 @@ void main() {
     }
   });
 }
-
-MatchRecord _record({
-  required MatchFormatPreset format,
-  required bool deuceEnabled,
-  required List<Side> winners,
-}) => MatchRecord(
-  id: 'vector',
-  myPair: const Pair(
-    id: 'mine',
-    name: '自分',
-    players: [
-      Player(id: 'm1', name: 'A'),
-      Player(id: 'm2', name: 'B'),
-    ],
-  ),
-  opponentPair: const Pair(
-    id: 'opponent',
-    name: '相手',
-    players: [
-      Player(id: 'o1', name: 'C'),
-      Player(id: 'o2', name: 'D'),
-    ],
-  ),
-  format: format,
-  deuceEnabled: deuceEnabled,
-  firstServingSide: Side.mine,
-  firstServerId: 'm1',
-  firstReceiverId: 'o1',
-  createdAt: DateTime.utc(2026),
-  events: [
-    for (var index = 0; index < winners.length; index++)
-      PointEvent(
-        id: '$index',
-        winningSide: winners[index],
-        createdAt: DateTime.utc(2026),
-      ),
-  ],
-);

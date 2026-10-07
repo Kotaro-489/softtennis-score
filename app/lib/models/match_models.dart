@@ -32,13 +32,7 @@ extension MatchFormatPresetX on MatchFormatPreset {
   };
   int get gamesToWin => (maximumGames ~/ 2) + 1;
   bool get defaultDeuceEnabled => this != MatchFormatPreset.practiceThree;
-  bool get isOfficial => this != MatchFormatPreset.practiceThree;
-  String get label => switch (this) {
-    MatchFormatPreset.officialFive => '5ゲーム',
-    MatchFormatPreset.officialSeven => '7ゲーム',
-    MatchFormatPreset.generalNine => '9ゲーム',
-    MatchFormatPreset.practiceThree => '3ゲーム',
-  };
+  String get label => '$maximumGamesゲーム';
 }
 
 enum PointReason {
@@ -62,8 +56,6 @@ extension PointReasonX on PointReason {
     PointReason.other => 'その他',
   };
 }
-
-enum MatchStatus { inProgress, completed }
 
 class Player {
   const Player({required this.id, required this.name});

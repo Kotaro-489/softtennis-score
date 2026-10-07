@@ -48,17 +48,15 @@ class MatchController extends StateNotifier<AsyncValue<MatchRecord?>> {
   Future<void> start(MatchRecord record) async {
     state = const AsyncLoading();
     try {
-      await _repository.save(record);
-      state = AsyncData(record);
+      await _persist(record);
     } catch (error, stackTrace) {
       state = AsyncError(error, stackTrace);
     }
   }
 
   Future<String?> addPoint(Side side, {PointReason? reason}) async {
-    if (_isMutating) return null;
-    final record = state.valueOrNull;
-    if (record == null || !_phoneCanEdit(record)) return null;
+    final record = _editableRecord;
+    if (record == null) return null;
     if (reason != null) {
       final servingSide = _engine.evaluate(record).servingSide;
       if (!_reasonPolicy.isAllowed(
@@ -70,93 +68,48 @@ class MatchController extends StateNotifier<AsyncValue<MatchRecord?>> {
         return null;
       }
     }
-    _isMutating = true;
     final eventId = DateTime.now().microsecondsSinceEpoch.toString();
     final updated = _recordWithPoint(record, eventId, side, reason: reason);
-    try {
-      await _repository.save(updated);
-      state = AsyncData(updated);
-      if (updated.completedAt != null) onCompleted?.call();
-      return eventId;
-    } catch (error, stackTrace) {
-      state = AsyncError(error, stackTrace);
-      return null;
-    } finally {
-      _isMutating = false;
-    }
+    return await _saveEdit(updated) ? eventId : null;
   }
 
   Future<ServeFaultOutcome?> recordFault() async {
-    if (_isMutating) return null;
-    final record = state.valueOrNull;
-    if (record == null || !_phoneCanEdit(record)) return null;
-    _isMutating = true;
-    try {
-      if (record.currentServeAttempt == ServeAttempt.first) {
-        final updated = record.copyWith(
-          currentServeAttempt: ServeAttempt.second,
-          revision: record.revision + 1,
-        );
-        await _repository.save(updated);
-        state = AsyncData(updated);
-        return ServeFaultOutcome.advancedToSecond;
-      }
-
-      final receivingSide = _engine.evaluate(record).servingSide.other;
-      final eventId = DateTime.now().microsecondsSinceEpoch.toString();
-      final updated = _recordWithPoint(
-        record,
-        eventId,
-        receivingSide,
-        reason: PointReason.opponentDoubleFault,
-      );
-      await _repository.save(updated);
-      state = AsyncData(updated);
-      if (updated.completedAt != null) onCompleted?.call();
-      return ServeFaultOutcome.doubleFaultRecorded;
-    } catch (error, stackTrace) {
-      state = AsyncError(error, stackTrace);
-      return null;
-    } finally {
-      _isMutating = false;
-    }
+    final record = _editableRecord;
+    if (record == null) return null;
+    final firstFault = record.currentServeAttempt == ServeAttempt.first;
+    final updated = firstFault
+        ? record.copyWith(currentServeAttempt: ServeAttempt.second)
+        : _recordWithPoint(
+            record,
+            DateTime.now().microsecondsSinceEpoch.toString(),
+            _engine.evaluate(record).servingSide.other,
+            reason: PointReason.opponentDoubleFault,
+          );
+    if (!await _saveEdit(updated)) return null;
+    return firstFault
+        ? ServeFaultOutcome.advancedToSecond
+        : ServeFaultOutcome.doubleFaultRecorded;
   }
 
   Future<void> undo() async {
-    if (_isMutating) return;
-    final record = state.valueOrNull;
-    if (record == null || !_phoneCanEdit(record)) return;
+    final record = _editableRecord;
+    if (record == null) return;
     if (record.currentServeAttempt == ServeAttempt.first &&
         record.events.isEmpty) {
       return;
     }
-    _isMutating = true;
     final updated = record.currentServeAttempt == ServeAttempt.second
-        ? record.copyWith(
-            currentServeAttempt: ServeAttempt.first,
-            revision: record.revision + 1,
-          )
+        ? record.copyWith(currentServeAttempt: ServeAttempt.first)
         : record.copyWith(
             events: record.events.sublist(0, record.events.length - 1),
             currentServeAttempt: record.events.last.serveAttempt,
-            revision: record.revision + 1,
           );
-    try {
-      await _repository.save(updated);
-      state = AsyncData(updated);
-    } catch (error, stackTrace) {
-      state = AsyncError(error, stackTrace);
-    } finally {
-      _isMutating = false;
-    }
+    await _saveEdit(updated);
   }
 
   Future<void> setPointReason(String eventId, PointReason reason) async {
-    if (_isMutating) return;
-    final record = state.valueOrNull;
-    if (record == null || !_phoneCanEdit(record) || record.events.isEmpty) {
-      return;
-    }
+    final record = _editableRecord;
+    if (record == null) return;
     final context = _engine.contextForPoint(record, eventId);
     if (context == null ||
         !_reasonPolicy.isAllowed(
@@ -167,7 +120,6 @@ class MatchController extends StateNotifier<AsyncValue<MatchRecord?>> {
         )) {
       return;
     }
-    _isMutating = true;
     final events = record.events.map((event) {
       if (event.id != eventId) return event;
       return PointEvent(
@@ -178,20 +130,10 @@ class MatchController extends StateNotifier<AsyncValue<MatchRecord?>> {
         reason: reason,
       );
     }).toList();
-    final updated = record.copyWith(
-      events: events,
-      revision: record.revision + 1,
-    );
-    try {
-      await _repository.save(updated);
-      state = AsyncData(updated);
-    } catch (error, stackTrace) {
-      state = AsyncError(error, stackTrace);
-    } finally {
-      _isMutating = false;
-    }
+    await _saveEdit(record.copyWith(events: events));
   }
 
+  /// ポイントを追加し、試合終了日時と次ポイントのサービス回数を計算する。
   MatchRecord _recordWithPoint(
     MatchRecord record,
     String eventId,
@@ -211,7 +153,6 @@ class MatchController extends StateNotifier<AsyncValue<MatchRecord?>> {
     var updated = record.copyWith(
       events: events,
       currentServeAttempt: ServeAttempt.first,
-      revision: record.revision + 1,
     );
     if (_engine.evaluate(updated).isCompleted) {
       updated = updated.copyWith(completedAt: DateTime.now());
@@ -219,12 +160,32 @@ class MatchController extends StateNotifier<AsyncValue<MatchRecord?>> {
     return updated;
   }
 
+  /// ローカル編集を直列化し、保存成功時だけ状態・版番号・完了通知を更新する。
+  Future<bool> _saveEdit(MatchRecord updated) async {
+    _isMutating = true;
+    try {
+      await _persist(updated.copyWith(revision: updated.revision + 1));
+      if (updated.completedAt != null) onCompleted?.call();
+      return true;
+    } catch (error, stackTrace) {
+      state = AsyncError(error, stackTrace);
+      return false;
+    } finally {
+      _isMutating = false;
+    }
+  }
+
+  /// 永続化を先に完了し、画面には保存済みの試合だけを公開する。
+  Future<void> _persist(MatchRecord record) async {
+    await _repository.save(record);
+    state = AsyncData(record);
+  }
+
   void dismissCompleted() => state = const AsyncData(null);
 
   Future<bool> handoffToWatch() async {
-    if (_isMutating) return false;
-    final record = state.valueOrNull;
-    if (record == null || !_phoneCanEdit(record)) return false;
+    final record = _editableRecord;
+    if (record == null) return false;
     _isMutating = true;
     final now = DateTime.now();
     final sessionId = 'watch-${now.microsecondsSinceEpoch}';
@@ -245,8 +206,7 @@ class MatchController extends StateNotifier<AsyncValue<MatchRecord?>> {
     );
     try {
       if (!await watchGateway.handoffMatch(envelope)) return false;
-      await _repository.save(candidate);
-      state = AsyncData(candidate);
+      await _persist(candidate);
       return true;
     } catch (_) {
       await watchGateway.forcePhoneControl(sessionId);
@@ -280,8 +240,7 @@ class MatchController extends StateNotifier<AsyncValue<MatchRecord?>> {
         revision: latest.revision + 1,
         clearWatchSessionId: true,
       );
-      await _repository.save(editable);
-      state = AsyncData(editable);
+      await _persist(editable);
       await watchGateway.ackPersisted(
         WatchSyncEnvelope(
           schemaVersion: WatchSyncEnvelope.currentSchemaVersion,
@@ -302,6 +261,7 @@ class MatchController extends StateNotifier<AsyncValue<MatchRecord?>> {
     }
   }
 
+  /// 編集権を先に保存し、接続不能でも新しいセッションIDで旧Watch更新を拒否する。
   Future<void> forcePhoneControl() async {
     if (_isMutating) return;
     final record = state.valueOrNull;
@@ -314,13 +274,10 @@ class MatchController extends StateNotifier<AsyncValue<MatchRecord?>> {
         revision: record.revision + 1,
         watchSessionId: 'invalidated-${DateTime.now().microsecondsSinceEpoch}',
       );
-      await _repository.save(updated);
-      state = AsyncData(updated);
+      await _persist(updated);
       try {
         await watchGateway.forcePhoneControl(staleSessionId);
-      } catch (_) {
-        // 保存済みの新しいセッションIDが古いWatch更新を拒否する。
-      }
+      } catch (_) {}
     } catch (error, stackTrace) {
       state = AsyncError(error, stackTrace);
     } finally {
@@ -328,11 +285,18 @@ class MatchController extends StateNotifier<AsyncValue<MatchRecord?>> {
     }
   }
 
-  bool _phoneCanEdit(MatchRecord? record) =>
-      record != null &&
-      record.completedAt == null &&
-      record.scoreInputOwner == ScoreInputOwner.phone;
+  MatchRecord? get _editableRecord {
+    final record = state.valueOrNull;
+    if (_isMutating ||
+        record == null ||
+        record.completedAt != null ||
+        record.scoreInputOwner != ScoreInputOwner.phone) {
+      return null;
+    }
+    return record;
+  }
 
+  /// 受信順に保存し、失敗した通知は再配送に任せて後続の同期を継続する。
   void _handleWatchEvent(WatchGatewayEvent event) {
     if (event is WatchEnvelopeReceived) {
       final previous = _watchEventQueue;
@@ -340,9 +304,7 @@ class MatchController extends StateNotifier<AsyncValue<MatchRecord?>> {
         await previous;
         try {
           await _applyWatchEnvelope(event.envelope);
-        } catch (_) {
-          // 後続の同期を止めず、再配送される完全スナップショットを待つ。
-        }
+        } catch (_) {}
       }();
     }
   }
@@ -366,8 +328,7 @@ class MatchController extends StateNotifier<AsyncValue<MatchRecord?>> {
             : envelope.revision <= current.revision)) {
       return false;
     }
-    await _repository.save(incoming);
-    state = AsyncData(incoming);
+    await _persist(incoming);
     await watchGateway.ackPersisted(envelope);
     if (incoming.completedAt != null) onCompleted?.call();
     return true;

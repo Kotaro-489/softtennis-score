@@ -1,27 +1,22 @@
 import '../models/match_models.dart';
 
-/// ポイントのサービス状況と勝者に整合する得点理由を返す。
 class PointReasonPolicy {
   const PointReasonPolicy();
 
+  /// サービス状況と得点側に整合する理由を、画面の表示順で返す。
   List<PointReason> availableReasons({
     required Side servingSide,
     required Side winningSide,
     required ServeAttempt serveAttempt,
   }) => PointReason.values
-      .where((reason) {
-        if (reason == PointReason.serviceAce) {
-          return winningSide == servingSide;
-        }
-        if (reason == PointReason.returnAce) {
-          return winningSide != servingSide;
-        }
-        if (reason == PointReason.opponentDoubleFault) {
-          return winningSide != servingSide &&
-              serveAttempt == ServeAttempt.second;
-        }
-        return true;
-      })
+      .where(
+        (reason) => isAllowed(
+          reason: reason,
+          servingSide: servingSide,
+          winningSide: winningSide,
+          serveAttempt: serveAttempt,
+        ),
+      )
       .toList(growable: false);
 
   bool isAllowed({
@@ -29,9 +24,11 @@ class PointReasonPolicy {
     required Side servingSide,
     required Side winningSide,
     required ServeAttempt serveAttempt,
-  }) => availableReasons(
-    servingSide: servingSide,
-    winningSide: winningSide,
-    serveAttempt: serveAttempt,
-  ).contains(reason);
+  }) => switch (reason) {
+    PointReason.serviceAce => winningSide == servingSide,
+    PointReason.returnAce => winningSide != servingSide,
+    PointReason.opponentDoubleFault =>
+      winningSide != servingSide && serveAttempt == ServeAttempt.second,
+    _ => true,
+  };
 }

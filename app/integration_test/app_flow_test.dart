@@ -3,29 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:softtennis_score/main.dart';
-import 'package:softtennis_score/models/match_models.dart';
 import 'package:softtennis_score/providers/app_providers.dart';
-import 'package:softtennis_score/repositories/match_repository.dart';
 
-class FlowRepository implements MatchRepository {
-  MatchRecord? active;
-  final completed = <MatchRecord>[];
-  MyPairProfile? profile;
-
-  @override
-  Future<void> delete(String id) async =>
-      completed.removeWhere((record) => record.id == id);
-  @override
-  Future<List<MatchRecord>> findCompleted() async => completed;
-  @override
-  Future<MatchRecord?> findInProgress() async => active;
-  @override
-  Future<MyPairProfile?> loadMyPairProfile() async => profile;
-  @override
-  Future<void> save(MatchRecord record) async => active = record;
-  @override
-  Future<void> saveMyPairProfile(MyPairProfile value) async => profile = value;
-}
+import '../test/support/memory_match_repository.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -40,7 +20,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          matchRepositoryProvider.overrideWithValue(FlowRepository()),
+          matchRepositoryProvider.overrideWithValue(MemoryMatchRepository()),
         ],
         child: const SoftTennisScoreApp(),
       ),

@@ -109,21 +109,8 @@ final class ScoreRuleEngineTests: XCTestCase {
       .appendingPathComponent("\(UUID().uuidString).json")
     defer { try? FileManager.default.removeItem(at: file) }
     let store = WatchMatchStore(fileURL: file)
-    var match = record(format: .officialFive, winners: [])
-    match.scoreInputOwner = .watch
-    match.watchSessionId = "watch-1"
-    let envelope = WatchSyncEnvelopeDTO(
-      schemaVersion: 1,
-      messageId: "legacy",
-      type: .handoff,
-      matchId: match.id,
-      watchSessionId: "watch-1",
-      revision: match.revision,
-      sentAt: SharedClock.now(),
-      match: match
-    )
-
-    XCTAssertFalse(store.acceptHandoff(envelope))
+    let match = record(format: .officialFive, winners: [])
+    XCTAssertFalse(store.acceptHandoff(handoff(match, schemaVersion: 1)))
     XCTAssertNil(store.record)
   }
 
@@ -135,33 +122,9 @@ final class ScoreRuleEngineTests: XCTestCase {
     defer { try? FileManager.default.removeItem(at: directory) }
     let file = directory.appendingPathComponent("match.json")
     let store = WatchMatchStore(fileURL: file)
-    let match = record(format: .officialFive, winners: [])
-    let watchMatch = MatchRecordDTO(
-      id: match.id,
-      myPair: match.myPair,
-      opponentPair: match.opponentPair,
-      format: match.format,
-      deuceEnabled: match.deuceEnabled,
-      firstServingSide: match.firstServingSide,
-      firstServerId: match.firstServerId,
-      firstReceiverId: match.firstReceiverId,
-      createdAt: match.createdAt,
-      scoreInputOwner: .watch,
-      revision: 1,
-      watchSessionId: "watch-1"
-    )
-    let envelope = WatchSyncEnvelopeDTO(
-      schemaVersion: WatchSyncEnvelopeDTO.currentSchemaVersion,
-      messageId: "handoff",
-      type: .handoff,
-      matchId: watchMatch.id,
-      watchSessionId: "watch-1",
-      revision: 1,
-      sentAt: SharedClock.now(),
-      match: watchMatch
-    )
-
-    XCTAssertTrue(store.acceptHandoff(envelope))
+    var match = record(format: .officialFive, winners: [])
+    match.revision = 1
+    XCTAssertTrue(store.acceptHandoff(handoff(match)))
     store.fault()
     XCTAssertEqual(store.record?.currentServeAttempt, .second)
 
@@ -176,20 +139,8 @@ final class ScoreRuleEngineTests: XCTestCase {
       .appendingPathComponent("\(UUID().uuidString).json")
     defer { try? FileManager.default.removeItem(at: file) }
     let store = WatchMatchStore(fileURL: file)
-    var match = record(format: .officialFive, winners: [])
-    match.scoreInputOwner = .watch
-    match.watchSessionId = "watch-1"
-    let envelope = WatchSyncEnvelopeDTO(
-      schemaVersion: WatchSyncEnvelopeDTO.currentSchemaVersion,
-      messageId: "handoff",
-      type: .handoff,
-      matchId: match.id,
-      watchSessionId: "watch-1",
-      revision: 0,
-      sentAt: SharedClock.now(),
-      match: match
-    )
-    XCTAssertTrue(store.acceptHandoff(envelope))
+    let match = record(format: .officialFive, winners: [])
+    XCTAssertTrue(store.acceptHandoff(handoff(match)))
 
     store.fault()
     store.addPoint(.mine)
@@ -228,6 +179,107 @@ final class ScoreRuleEngineTests: XCTestCase {
           reason: nil
         )
       }
+    )
+  }
+
+  @MainActor
+  func testDoubleFaultPersistsReceiverPointAndRevisionOnlyOnce() throws {
+    for completedGames in [0, 1] {
+      let file = FileManager.default.temporaryDirectory
+        .appendingPathComponent("\(UUID().uuidString).json")
+      defer { try? FileManager.default.removeItem(at: file) }
+      let store = WatchMatchStore(fileURL: file)
+      let match = record(format: .officialFive, winners: Array(repeating: .mine, count: completedGames * 4 + 1))
+      XCTAssertTrue(store.acceptHandoff(handoff(match)))
+
+      store.fault()
+      store.fault()
+      let saved = try XCTUnwrap(store.record)
+      XCTAssertEqual(saved.events.last?.winningSide, completedGames == 0 ? .opponent : .mine)
+      XCTAssertEqual(saved.events.last?.reason, .opponentDoubleFault)
+      XCTAssertEqual(saved.events.last?.serveAttempt, .second)
+      XCTAssertEqual(saved.currentServeAttempt, .first)
+      XCTAssertEqual(saved.revision, 2)
+      XCTAssertEqual(WatchMatchStore(fileURL: file).record, saved)
+
+      store.setReason(.other)
+      XCTAssertEqual(store.record, saved)
+      store.undo()
+      XCTAssertEqual(store.record?.currentServeAttempt, .second)
+      XCTAssertEqual(store.record?.revision, 3)
+      store.undo()
+      XCTAssertEqual(store.record?.currentServeAttempt, .first)
+      XCTAssertEqual(store.record?.revision, 4)
+    }
+  }
+
+  @MainActor
+  func testCompletionIsPersistedAndFurtherEditsAreIgnored() throws {
+    for doubleFault in [false, true] {
+      let file = FileManager.default.temporaryDirectory
+        .appendingPathComponent("\(UUID().uuidString).json")
+      defer { try? FileManager.default.removeItem(at: file) }
+      let store = WatchMatchStore(fileURL: file)
+      let match = record(format: .practiceThree, winners: Array(repeating: .mine, count: 7))
+      XCTAssertTrue(store.acceptHandoff(handoff(match)))
+      if doubleFault {
+        store.fault()
+        store.fault()
+      } else {
+        store.addPoint(.mine)
+      }
+      let completed = try XCTUnwrap(store.record)
+      XCTAssertNotNil(completed.completedAt)
+      XCTAssertEqual(completed.events.count, 8)
+      XCTAssertEqual(completed.revision, doubleFault ? 2 : 1)
+      XCTAssertEqual(store.notice, .matchCompleted)
+      XCTAssertEqual(WatchMatchStore(fileURL: file).record, completed)
+      store.dismissNotice()
+      store.addPoint(.mine)
+      store.fault()
+      store.undo()
+      store.setReason(.other)
+      XCTAssertEqual(store.record, completed)
+    }
+  }
+
+  @MainActor
+  func testFailedSaveDoesNotPublishOrAdvanceRevision() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let file = directory.appendingPathComponent("match.json")
+    let backup = directory.appendingPathComponent("saved.json")
+    let store = WatchMatchStore(fileURL: file)
+    XCTAssertTrue(store.acceptHandoff(handoff(record(format: .officialFive, winners: []))))
+    let original = store.record
+    var publications = 0
+    store.onSnapshot = { _ in publications += 1 }
+    try FileManager.default.moveItem(at: file, to: backup)
+    try FileManager.default.createDirectory(at: file, withIntermediateDirectories: false)
+
+    store.addPoint(.mine)
+    store.fault()
+    XCTAssertEqual(store.record, original)
+    XCTAssertEqual(publications, 0)
+    XCTAssertFalse(store.isSaving)
+    XCTAssertEqual(WatchMatchStore(fileURL: backup).record, original)
+  }
+
+  /// 通信を使わずに、同じ試合をWatch所有の受信スナップショットとして用意する。
+  private func handoff(_ record: MatchRecordDTO, schemaVersion: Int = WatchSyncEnvelopeDTO.currentSchemaVersion) -> WatchSyncEnvelopeDTO {
+    var match = record
+    match.scoreInputOwner = .watch
+    match.watchSessionId = "watch-1"
+    return WatchSyncEnvelopeDTO(
+      schemaVersion: schemaVersion,
+      messageId: "handoff",
+      type: .handoff,
+      matchId: match.id,
+      watchSessionId: "watch-1",
+      revision: match.revision,
+      sentAt: SharedClock.now(),
+      match: match
     )
   }
 

@@ -18,6 +18,8 @@ class SqliteMatchRepository implements MatchRepository {
   final String? databasePath;
   final MatchRecordCodec codec;
   Database? _database;
+  static const _createSettings =
+      'CREATE TABLE settings (key TEXT PRIMARY KEY, payload TEXT NOT NULL)';
 
   Future<void> close() async {
     await _database?.close();
@@ -37,15 +39,11 @@ class SqliteMatchRepository implements MatchRepository {
           await db.execute(
             'CREATE TABLE matches (id TEXT PRIMARY KEY, completedAt TEXT, createdAt TEXT NOT NULL, payload TEXT NOT NULL)',
           );
-          await db.execute(
-            'CREATE TABLE settings (key TEXT PRIMARY KEY, payload TEXT NOT NULL)',
-          );
+          await db.execute(_createSettings);
         },
         onUpgrade: (db, oldVersion, _) async {
           if (oldVersion < 2) {
-            await db.execute(
-              'CREATE TABLE settings (key TEXT PRIMARY KEY, payload TEXT NOT NULL)',
-            );
+            await db.execute(_createSettings);
           }
         },
       ),
@@ -73,12 +71,7 @@ class SqliteMatchRepository implements MatchRepository {
       orderBy: 'createdAt DESC',
       limit: 1,
     );
-    return rows.isEmpty
-        ? null
-        : codec.fromMap(
-            jsonDecode(rows.first['payload']! as String)
-                as Map<String, dynamic>,
-          );
+    return rows.isEmpty ? null : codec.decode(rows.first['payload']! as String);
   }
 
   @override
@@ -89,13 +82,7 @@ class SqliteMatchRepository implements MatchRepository {
       where: 'completedAt IS NOT NULL',
       orderBy: 'completedAt DESC',
     );
-    return rows
-        .map(
-          (row) => codec.fromMap(
-            jsonDecode(row['payload']! as String) as Map<String, dynamic>,
-          ),
-        )
-        .toList();
+    return rows.map((row) => codec.decode(row['payload']! as String)).toList();
   }
 
   @override

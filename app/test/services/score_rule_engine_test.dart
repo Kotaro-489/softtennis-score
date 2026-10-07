@@ -2,6 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:softtennis_score/models/match_models.dart';
 import 'package:softtennis_score/services/score_rule_engine.dart';
 
+import '../support/match_fixtures.dart';
+
 void main() {
   const engine = ScoreRuleEngine();
 
@@ -10,35 +12,10 @@ void main() {
     List<Side> winners, {
     bool? deuceEnabled,
   }) {
-    final now = DateTime(2026);
-    return MatchRecord(
-      id: 'match',
-      myPair: const Pair(
-        id: 'mine',
-        name: '自分',
-        players: [
-          Player(id: 'm1', name: '自分1'),
-          Player(id: 'm2', name: '自分2'),
-        ],
-      ),
-      opponentPair: const Pair(
-        id: 'opponent',
-        name: '相手',
-        players: [
-          Player(id: 'o1', name: '相手1'),
-          Player(id: 'o2', name: '相手2'),
-        ],
-      ),
+    return matchRecord(
       format: format,
-      deuceEnabled: deuceEnabled ?? format.defaultDeuceEnabled,
-      firstServingSide: Side.mine,
-      firstServerId: 'm1',
-      firstReceiverId: 'o1',
-      createdAt: now,
-      events: [
-        for (var index = 0; index < winners.length; index++)
-          PointEvent(id: '$index', winningSide: winners[index], createdAt: now),
-      ],
+      winners: winners,
+      deuceEnabled: deuceEnabled,
     );
   }
 
