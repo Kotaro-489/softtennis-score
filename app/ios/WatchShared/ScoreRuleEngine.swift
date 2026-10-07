@@ -21,6 +21,7 @@ struct PointContextDTO {
 }
 
 struct SwiftScoreRuleEngine {
+  /// 対象ポイントの直前までを再計算してサービス状況を復元する。
   func context(for eventID: String, in record: MatchRecordDTO) -> PointContextDTO? {
     guard let index = record.events.firstIndex(where: { $0.id == eventID }) else {
       return nil
@@ -34,6 +35,7 @@ struct SwiftScoreRuleEngine {
     )
   }
 
+  /// Dartと共通のルールでイベント履歴から得点・サービス順・案内を再現する。
   func evaluate(_ record: MatchRecordDTO) -> ScoreSnapshotDTO {
     var myGames = 0
     var opponentGames = 0
@@ -76,9 +78,9 @@ struct SwiftScoreRuleEngine {
       opponentPoints: opponentPoints,
       isFinalGame: finalGame,
       isCompleted: completed,
-      servingSide: service.0,
-      serverId: service.1,
-      receiverId: service.2,
+      servingSide: service.servingSide,
+      serverId: service.serverId,
+      receiverId: service.receiverId,
       shouldChangeSides: changedSides,
       shouldChangeService: changedService
     )
@@ -104,14 +106,10 @@ struct SwiftScoreRuleEngine {
     _ completedGames: Int,
     _ pointIndex: Int,
     _ finalGame: Bool
-  ) -> (MatchSide, String, String) {
+  ) -> (servingSide: MatchSide, serverId: String, receiverId: String) {
     let serviceBlock = pointIndex / 2
-    let servingSide: MatchSide
-    if finalGame {
-      servingSide = serviceBlock.isMultiple(of: 2) ? record.firstServingSide : record.firstServingSide.other
-    } else {
-      servingSide = completedGames.isMultiple(of: 2) ? record.firstServingSide : record.firstServingSide.other
-    }
+    let sideRotation = finalGame ? serviceBlock : completedGames
+    let servingSide = sideRotation.isMultiple(of: 2) ? record.firstServingSide : record.firstServingSide.other
     let servingPair = servingSide == .mine ? record.myPair : record.opponentPair
     let receivingPair = servingSide == .mine ? record.opponentPair : record.myPair
     let initialServer = servingSide == record.firstServingSide ? record.firstServerId : record.firstReceiverId

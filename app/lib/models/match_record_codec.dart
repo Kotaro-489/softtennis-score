@@ -2,7 +2,6 @@ import 'dart:convert';
 
 import 'match_models.dart';
 
-/// SQLite、Platform Channel、watchOSで共有する試合JSONの唯一の定義。
 class MatchRecordCodec {
   const MatchRecordCodec();
 
@@ -11,6 +10,7 @@ class MatchRecordCodec {
   MatchRecord decode(String source) =>
       fromMap(jsonDecode(source) as Map<String, dynamic>);
 
+  /// SQLiteとWatch同期で共用する形式へ変換する。
   Map<String, dynamic> toMap(MatchRecord record) => {
     'id': record.id,
     'myPair': _pairMap(record.myPair),
@@ -39,6 +39,7 @@ class MatchRecordCodec {
         .toList(),
   };
 
+  /// 追加項目がない旧データには、当時のルールとサービス状態を補完する。
   MatchRecord fromMap(Map<String, dynamic> map) {
     final format = MatchFormatPreset.values.byName(map['format'] as String);
     return MatchRecord(

@@ -13,7 +13,6 @@ class ScoreSnapshot {
     required this.receiverId,
     required this.shouldChangeSides,
     required this.shouldChangeService,
-    required this.gameWinners,
   });
   final int myGames;
   final int opponentGames;
@@ -26,7 +25,6 @@ class ScoreSnapshot {
   final String receiverId;
   final bool shouldChangeSides;
   final bool shouldChangeService;
-  final List<Side> gameWinners;
 }
 
 class PointContext {
@@ -41,10 +39,10 @@ class PointContext {
   final ServeAttempt serveAttempt;
 }
 
-/// Flutterに依存しない得点・サービス順の状態遷移。
 class ScoreRuleEngine {
   const ScoreRuleEngine();
 
+  /// 対象ポイントの直前までを再計算し、その時点のサービス状況を復元する。
   PointContext? contextForPoint(MatchRecord record, String eventId) {
     final eventIndex = record.events.indexWhere((event) => event.id == eventId);
     if (eventIndex < 0) return null;
@@ -59,6 +57,7 @@ class ScoreRuleEngine {
     );
   }
 
+  /// イベント履歴から得点・サービス順・案内を再現し、試合終了後のイベントは無視する。
   ScoreSnapshot evaluate(MatchRecord record) {
     var myGames = 0;
     var opponentGames = 0;
@@ -68,7 +67,6 @@ class ScoreRuleEngine {
     var completed = false;
     var changedSides = false;
     var changedService = false;
-    final gameWinners = <Side>[];
 
     for (final event in record.events) {
       if (completed) break;
@@ -88,7 +86,6 @@ class ScoreRuleEngine {
         } else {
           opponentGames++;
         }
-        gameWinners.add(winner);
         changedSides = !finalGame && (myGames + opponentGames).isOdd;
         changedService = true;
         completed =
@@ -122,12 +119,11 @@ class ScoreRuleEngine {
       opponentPoints: opponentPoints,
       isFinalGame: finalGame,
       isCompleted: completed,
-      servingSide: service.$1,
-      serverId: service.$2,
-      receiverId: service.$3,
+      servingSide: service.servingSide,
+      serverId: service.serverId,
+      receiverId: service.receiverId,
       shouldChangeSides: changedSides,
       shouldChangeService: changedService,
-      gameWinners: List.unmodifiable(gameWinners),
     );
   }
 
@@ -140,18 +136,16 @@ class ScoreRuleEngine {
     return high >= target && (!deuceEnabled || (mine - opponent).abs() >= 2);
   }
 
-  (Side, String, String) _service(
+  /// 通常はゲーム単位、ファイナルは2ポイント単位でサービス側を交代する。
+  ({Side servingSide, String serverId, String receiverId}) _service(
     MatchRecord record,
     int completedGames,
     int pointIndex,
     bool finalGame,
   ) {
     final serviceBlock = pointIndex ~/ 2;
-    final servingSide = finalGame
-        ? serviceBlock.isEven
-              ? record.firstServingSide
-              : record.firstServingSide.other
-        : completedGames.isEven
+    final sideRotation = finalGame ? serviceBlock : completedGames;
+    final servingSide = sideRotation.isEven
         ? record.firstServingSide
         : record.firstServingSide.other;
     final servingPair = servingSide == Side.mine
@@ -173,7 +167,7 @@ class ScoreRuleEngine {
       initialReceiver,
       pointIndex,
     );
-    return (servingSide, server, receiver);
+    return (servingSide: servingSide, serverId: server, receiverId: receiver);
   }
 
   String _alternatePlayer(Pair pair, String preferredId, int index) {

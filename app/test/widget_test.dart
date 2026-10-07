@@ -1,64 +1,88 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:softtennis_score/main.dart';
 import 'package:softtennis_score/models/match_models.dart';
 import 'package:softtennis_score/providers/app_providers.dart';
-import 'package:softtennis_score/repositories/match_repository.dart';
+import 'package:softtennis_score/services/watch_session_gateway.dart';
 import 'package:softtennis_score/views/history_view.dart';
 import 'package:softtennis_score/views/score_view.dart';
 
-class FakeMatchRepository implements MatchRepository {
-  FakeMatchRepository({this.active});
-
-  MatchRecord? active;
-
-  @override
-  Future<void> delete(String id) async {}
-  @override
-  Future<List<MatchRecord>> findCompleted() async => [];
-  @override
-  Future<MatchRecord?> findInProgress() async => active;
-  @override
-  Future<MyPairProfile?> loadMyPairProfile() async => null;
-  @override
-  Future<void> save(MatchRecord record) async => active = record;
-  @override
-  Future<void> saveMyPairProfile(MyPairProfile profile) async {}
-}
+import 'support/match_fixtures.dart';
+import 'support/memory_match_repository.dart';
 
 void main() {
-  MatchRecord activeRecord({bool deuceEnabled = true}) => MatchRecord(
-    id: 'match',
-    myPair: const Pair(
-      id: 'mine',
-      name: '自分',
-      players: [
-        Player(id: 'm1', name: 'A'),
-        Player(id: 'm2', name: 'B'),
-      ],
-    ),
-    opponentPair: const Pair(
-      id: 'opponent',
-      name: '相手',
-      players: [
-        Player(id: 'o1', name: 'C'),
-        Player(id: 'o2', name: 'D'),
-      ],
-    ),
-    format: MatchFormatPreset.officialFive,
-    deuceEnabled: deuceEnabled,
-    firstServingSide: Side.mine,
-    firstServerId: 'm1',
-    firstReceiverId: 'o1',
-    createdAt: DateTime(2026),
-  );
+  for (final platform in [TargetPlatform.iOS, TargetPlatform.android]) {
+    testWidgets('${platform.name}は文字拡大とダーク表示でも入力・保存中の操作制御を維持する', (
+      tester,
+    ) async {
+      tester.binding.platformDispatcher.textScaleFactorTestValue = 2;
+      tester.binding.platformDispatcher.platformBrightnessTestValue =
+          Brightness.dark;
+      addTearDown(() {
+        tester.binding.platformDispatcher.clearTextScaleFactorTestValue();
+        tester.binding.platformDispatcher.clearPlatformBrightnessTestValue();
+      });
+      final repository = MemoryMatchRepository(record: matchRecord());
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            matchRepositoryProvider.overrideWithValue(repository),
+            watchSessionGatewayProvider.overrideWithValue(
+              const NoopWatchSessionGateway(),
+            ),
+          ],
+          child: const SoftTennisScoreApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final scoreContext = tester.element(find.byType(ScoreView));
+      expect(MediaQuery.textScalerOf(scoreContext).scale(10), 20);
+      expect(Theme.of(scoreContext).brightness, Brightness.dark);
+      final points = find.widgetWithText(FilledButton, '＋ 1ポイント');
+      await tester.ensureVisible(points.first);
+      await tester.tap(points.first);
+      await tester.pumpAndSettle();
+      final reason = find.widgetWithText(ActionChip, 'サービスエース');
+      await tester.ensureVisible(reason);
+      repository.saveGate = Completer<void>();
+      await tester.tap(reason);
+      await tester.pump();
+
+      expect(tester.widget<ActionChip>(reason).onPressed, isNull);
+      expect(
+        tester
+            .widget<OutlinedButton>(find.byType(OutlinedButton).first)
+            .onPressed,
+        isNull,
+      );
+      expect(
+        tester
+            .widget<IconButton>(find.widgetWithIcon(IconButton, Icons.undo))
+            .onPressed,
+        isNull,
+      );
+      for (final button in tester.widgetList<FilledButton>(points)) {
+        expect(button.onPressed, isNull);
+      }
+      expect(tester.getSize(points.first).height, greaterThanOrEqualTo(44));
+      repository.saveGate!.complete();
+      await tester.pumpAndSettle();
+      expect(repository.record!.events.single.reason, PointReason.serviceAce);
+      expect(repository.record!.revision, 2);
+      expect(find.text('サービスエース'), findsNothing);
+      expect(tester.widget<FilledButton>(points.first).onPressed, isNotNull);
+      expect(tester.takeException(), isNull);
+    }, variant: TargetPlatformVariant({platform}));
+  }
 
   testWidgets('アプリは試合作成画面を表示する', (tester) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          matchRepositoryProvider.overrideWithValue(FakeMatchRepository()),
+          matchRepositoryProvider.overrideWithValue(MemoryMatchRepository()),
         ],
         child: const SoftTennisScoreApp(),
       ),
@@ -76,7 +100,7 @@ void main() {
   });
 
   testWidgets('形式変更時に従来値へ戻し、選択したデュース設定を保存する', (tester) async {
-    final repository = FakeMatchRepository();
+    final repository = MemoryMatchRepository();
     await tester.pumpWidget(
       ProviderScope(
         overrides: [matchRepositoryProvider.overrideWithValue(repository)],
@@ -113,20 +137,21 @@ void main() {
     await tester.tap(start);
     await tester.pumpAndSettle();
 
-    expect(repository.active!.format, MatchFormatPreset.practiceThree);
-    expect(repository.active!.deuceEnabled, isTrue);
+    expect(repository.record!.format, MatchFormatPreset.practiceThree);
+    expect(repository.record!.deuceEnabled, isTrue);
   });
 
   testWidgets('文字を拡大しても操作ボタンは44px以上ある', (tester) async {
+    tester.binding.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(
+      tester.binding.platformDispatcher.clearTextScaleFactorTestValue,
+    );
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          matchRepositoryProvider.overrideWithValue(FakeMatchRepository()),
+          matchRepositoryProvider.overrideWithValue(MemoryMatchRepository()),
         ],
-        child: const MediaQuery(
-          data: MediaQueryData(textScaler: TextScaler.linear(2)),
-          child: SoftTennisScoreApp(),
-        ),
+        child: const SoftTennisScoreApp(),
       ),
     );
     await tester.pumpAndSettle();
@@ -156,7 +181,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          matchRepositoryProvider.overrideWithValue(FakeMatchRepository()),
+          matchRepositoryProvider.overrideWithValue(MemoryMatchRepository()),
         ],
         child: const SoftTennisScoreApp(),
       ),
@@ -167,11 +192,11 @@ void main() {
   });
 
   testWidgets('得点画面は文字拡大時も大きな得点ボタンを表示する', (tester) async {
-    final record = activeRecord();
+    final record = matchRecord();
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          matchRepositoryProvider.overrideWithValue(FakeMatchRepository()),
+          matchRepositoryProvider.overrideWithValue(MemoryMatchRepository()),
         ],
         child: MaterialApp(
           home: MediaQuery(
@@ -189,11 +214,11 @@ void main() {
   });
 
   testWidgets('得点画面はポイントをゲーム数より大きく表示する', (tester) async {
-    final record = activeRecord();
+    final record = matchRecord();
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          matchRepositoryProvider.overrideWithValue(FakeMatchRepository()),
+          matchRepositoryProvider.overrideWithValue(MemoryMatchRepository()),
         ],
         child: MaterialApp(home: ScoreView(record: record)),
       ),
@@ -218,10 +243,10 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          matchRepositoryProvider.overrideWithValue(FakeMatchRepository()),
+          matchRepositoryProvider.overrideWithValue(MemoryMatchRepository()),
         ],
         child: MaterialApp(
-          home: MatchDetailView(record: activeRecord(deuceEnabled: false)),
+          home: MatchDetailView(record: matchRecord(deuceEnabled: false)),
         ),
       ),
     );
@@ -231,7 +256,7 @@ void main() {
   });
 
   testWidgets('フォルト操作で1stから2ndへ切り替わる', (tester) async {
-    final repository = FakeMatchRepository(active: activeRecord());
+    final repository = MemoryMatchRepository(record: matchRecord());
     await tester.pumpWidget(
       ProviderScope(
         overrides: [matchRepositoryProvider.overrideWithValue(repository)],
@@ -251,7 +276,7 @@ void main() {
   });
 
   testWidgets('サービス側得点では不整合な理由を表示しない', (tester) async {
-    final repository = FakeMatchRepository(active: activeRecord());
+    final repository = MemoryMatchRepository(record: matchRecord());
     await tester.pumpWidget(
       ProviderScope(
         overrides: [matchRepositoryProvider.overrideWithValue(repository)],
@@ -269,7 +294,7 @@ void main() {
   });
 
   testWidgets('2ndのレシーブ側得点ではリターンとダブルフォルトを表示する', (tester) async {
-    final repository = FakeMatchRepository(active: activeRecord());
+    final repository = MemoryMatchRepository(record: matchRecord());
     await tester.pumpWidget(
       ProviderScope(
         overrides: [matchRepositoryProvider.overrideWithValue(repository)],
@@ -289,7 +314,7 @@ void main() {
   });
 
   testWidgets('Watch編集中はiPhoneを閲覧専用にする', (tester) async {
-    final record = activeRecord().copyWith(
+    final record = matchRecord().copyWith(
       scoreInputOwner: ScoreInputOwner.watch,
       revision: 1,
       watchSessionId: 'watch-1',
@@ -298,7 +323,7 @@ void main() {
       ProviderScope(
         overrides: [
           matchRepositoryProvider.overrideWithValue(
-            FakeMatchRepository(active: record),
+            MemoryMatchRepository(record: record),
           ),
         ],
         child: const SoftTennisScoreApp(),

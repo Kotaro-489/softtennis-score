@@ -3,36 +3,20 @@ import 'package:softtennis_score/models/match_models.dart';
 import 'package:softtennis_score/models/match_record_codec.dart';
 import 'package:softtennis_score/models/watch_sync_envelope.dart';
 
+import '../support/match_fixtures.dart';
+
 void main() {
-  MatchRecord record() => MatchRecord(
-    id: 'match-1',
-    myPair: const Pair(
-      id: 'mine',
-      name: '自分',
-      players: [
-        Player(id: 'm1', name: 'A'),
-        Player(id: 'm2', name: 'B'),
-      ],
-    ),
-    opponentPair: const Pair(
-      id: 'opponent',
-      name: '相手',
-      players: [
-        Player(id: 'o1', name: 'C'),
-        Player(id: 'o2', name: 'D'),
-      ],
-    ),
-    format: MatchFormatPreset.officialSeven,
-    deuceEnabled: false,
-    firstServingSide: Side.mine,
-    firstServerId: 'm1',
-    firstReceiverId: 'o1',
-    createdAt: DateTime.utc(2026),
-    currentServeAttempt: ServeAttempt.second,
-    scoreInputOwner: ScoreInputOwner.watch,
-    revision: 4,
-    watchSessionId: 'watch-1',
-  );
+  MatchRecord record() =>
+      matchRecord(
+        id: 'match-1',
+        format: MatchFormatPreset.officialSeven,
+        deuceEnabled: false,
+      ).copyWith(
+        currentServeAttempt: ServeAttempt.second,
+        scoreInputOwner: ScoreInputOwner.watch,
+        revision: 4,
+        watchSessionId: 'watch-1',
+      );
 
   test('MatchRecordを共通JSONで往復できる', () {
     const codec = MatchRecordCodec();

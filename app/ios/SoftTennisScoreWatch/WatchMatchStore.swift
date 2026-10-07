@@ -22,16 +22,15 @@ final class WatchMatchStore: ObservableObject {
   private let reasonPolicy = SwiftPointReasonPolicy()
   private let fileURL: URL
 
-  init(fileManager: FileManager = .default) {
+  convenience init(fileManager: FileManager = .default) {
     let base = try? fileManager.url(
       for: .applicationSupportDirectory,
       in: .userDomainMask,
       appropriateFor: nil,
       create: true
     )
-    fileURL = (base ?? fileManager.temporaryDirectory)
-      .appendingPathComponent("active-watch-match.json")
-    record = try? Self.read(from: fileURL)
+    self.init(fileURL: (base ?? fileManager.temporaryDirectory)
+      .appendingPathComponent("active-watch-match.json"))
   }
 
   init(fileURL: URL) {
@@ -84,20 +83,8 @@ final class WatchMatchStore: ObservableObject {
   }
 
   func addPoint(_ side: MatchSide) {
-    guard canEdit else { return }
     update(haptic: .click) { match in
-      match.events.append(
-        PointEventDTO(
-          id: UUID().uuidString,
-          winningSide: side,
-          createdAt: SharedClock.now(),
-          serveAttempt: match.currentServeAttempt,
-          reason: nil
-        )
-      )
-      match.currentServeAttempt = .first
-      match.revision += 1
-      if engine.evaluate(match).isCompleted { match.completedAt = SharedClock.now() }
+      appendPoint(to: &match, winningSide: side)
     }
   }
 
@@ -106,24 +93,12 @@ final class WatchMatchStore: ObservableObject {
     if match.currentServeAttempt == .first {
       update(haptic: .directionUp) { value in
         value.currentServeAttempt = .second
-        value.revision += 1
       }
       return
     }
     let receivingSide = engine.evaluate(match).servingSide.other
     update(haptic: .failure) { value in
-      value.events.append(
-        PointEventDTO(
-          id: UUID().uuidString,
-          winningSide: receivingSide,
-          createdAt: SharedClock.now(),
-          serveAttempt: .second,
-          reason: .opponentDoubleFault
-        )
-      )
-      value.currentServeAttempt = .first
-      value.revision += 1
-      if engine.evaluate(value).isCompleted { value.completedAt = SharedClock.now() }
+      appendPoint(to: &value, winningSide: receivingSide, reason: .opponentDoubleFault)
     }
   }
 
@@ -137,7 +112,6 @@ final class WatchMatchStore: ObservableObject {
         value.currentServeAttempt = removed.serveAttempt
         value.completedAt = nil
       }
-      value.revision += 1
     }
   }
 
@@ -147,9 +121,7 @@ final class WatchMatchStore: ObservableObject {
     }
     guard availableReasons.contains(reason) else { return }
     update(haptic: .click) { value in
-      guard !value.events.isEmpty else { return }
       value.events[value.events.count - 1].reason = reason
-      value.revision += 1
     }
     showingReasons = false
   }
@@ -185,13 +157,32 @@ final class WatchMatchStore: ObservableObject {
     record = nil
   }
 
+  /// 通常得点とダブルフォルトに共通するイベント追加・次サービス・終了判定を行う。
+  private func appendPoint(
+    to match: inout MatchRecordDTO,
+    winningSide: MatchSide,
+    reason: PointReasonDTO? = nil
+  ) {
+    match.events.append(PointEventDTO(
+      id: UUID().uuidString,
+      winningSide: winningSide,
+      createdAt: SharedClock.now(),
+      serveAttempt: match.currentServeAttempt,
+      reason: reason
+    ))
+    match.currentServeAttempt = .first
+    if engine.evaluate(match).isCompleted { match.completedAt = SharedClock.now() }
+  }
+
+  /// 編集可能な操作だけ版番号を一度進め、保存に成功してから案内を表示する。
   private func update(
     haptic: WKHapticType,
     mutation: (inout MatchRecordDTO) -> Void
   ) {
-    guard var updated = record else { return }
+    guard canEdit, var updated = record else { return }
     let previous = engine.evaluate(updated)
     mutation(&updated)
+    updated.revision += 1
     let next = engine.evaluate(updated)
     guard persistAndPublish(updated, haptic: haptic) else { return }
 
@@ -208,6 +199,7 @@ final class WatchMatchStore: ObservableObject {
   }
 
   @discardableResult
+  /// アトミック保存が成功したときだけ画面・ハプティクス・同期へ結果を公開する。
   private func persistAndPublish(_ updated: MatchRecordDTO, haptic: WKHapticType) -> Bool {
     isSaving = true
     defer { isSaving = false }

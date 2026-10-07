@@ -4,39 +4,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:softtennis_score/models/match_models.dart';
 import 'package:softtennis_score/models/watch_sync_envelope.dart';
-import 'package:softtennis_score/repositories/match_repository.dart';
 import 'package:softtennis_score/services/score_rule_engine.dart';
 import 'package:softtennis_score/services/watch_session_gateway.dart';
 import 'package:softtennis_score/viewmodels/match_controller.dart';
 
-class MemoryMatchRepository implements MatchRepository {
-  MatchRecord? record;
-
-  @override
-  Future<void> delete(String id) async => record = null;
-  @override
-  Future<List<MatchRecord>> findCompleted() async =>
-      record?.completedAt == null ? [] : [record!];
-  @override
-  Future<MatchRecord?> findInProgress() async =>
-      record?.completedAt == null ? record : null;
-  @override
-  Future<MyPairProfile?> loadMyPairProfile() async => null;
-  @override
-  Future<void> save(MatchRecord value) async => record = value;
-  @override
-  Future<void> saveMyPairProfile(MyPairProfile profile) async {}
-}
-
-class BlockingMatchRepository extends MemoryMatchRepository {
-  Completer<void>? saveGate;
-
-  @override
-  Future<void> save(MatchRecord value) async {
-    await saveGate?.future;
-    await super.save(value);
-  }
-}
+import '../support/match_fixtures.dart';
+import '../support/memory_match_repository.dart';
 
 class FakeWatchSessionGateway implements WatchSessionGateway {
   final eventsController = StreamController<WatchGatewayEvent>.broadcast();
@@ -78,36 +51,123 @@ class FakeWatchSessionGateway implements WatchSessionGateway {
 }
 
 void main() {
-  MatchRecord initialRecord() => MatchRecord(
-    id: 'match',
-    myPair: const Pair(
-      id: 'mine',
-      name: '自分',
-      players: [
-        Player(id: 'm1', name: '自分1'),
-        Player(id: 'm2', name: '自分2'),
-      ],
-    ),
-    opponentPair: const Pair(
-      id: 'opponent',
-      name: '相手',
-      players: [
-        Player(id: 'o1', name: '相手1'),
-        Player(id: 'o2', name: '相手2'),
-      ],
-    ),
-    format: MatchFormatPreset.officialFive,
-    deuceEnabled: true,
-    firstServingSide: Side.mine,
-    firstServerId: 'm1',
-    firstReceiverId: 'o1',
-    createdAt: DateTime(2026),
-  );
+  final edits = <String, Future<void> Function(MatchController)>{
+    '得点': (controller) async {
+      await controller.addPoint(Side.mine);
+    },
+    '1stフォルト': (controller) async {
+      await controller.recordFault();
+    },
+    '2ndフォルト': (controller) async {
+      await controller.recordFault();
+    },
+    '取消': (controller) => controller.undo(),
+    '理由': (controller) =>
+        controller.setPointReason('0', PointReason.serviceAce),
+  };
+
+  for (final edit in edits.entries) {
+    final initial = matchRecord(winners: [Side.mine]).copyWith(
+      currentServeAttempt: edit.key == '2ndフォルト'
+          ? ServeAttempt.second
+          : ServeAttempt.first,
+    );
+
+    test('${edit.key}の保存中は状態を変えず、別の編集も受け付けない', () async {
+      final repository = MemoryMatchRepository();
+      final controller = MatchController(repository, const ScoreRuleEngine());
+      addTearDown(controller.dispose);
+      await controller.start(initial);
+      repository.saveGate = Completer<void>();
+
+      final pending = edit.value(controller);
+      expect(controller.state.valueOrNull, same(initial));
+      expect(await controller.addPoint(Side.opponent), isNull);
+      expect(await controller.recordFault(), isNull);
+      await controller.undo();
+      await controller.setPointReason('0', PointReason.rallyWinner);
+      expect(await controller.handoffToWatch(), isFalse);
+      expect(repository.record, same(initial));
+
+      repository.saveGate!.complete();
+      await pending;
+      expect(repository.record!.revision, 1);
+      expect(controller.state.valueOrNull, same(repository.record));
+    });
+
+    test('${edit.key}の保存失敗後は保存済み状態を復元して再編集できる', () async {
+      final repository = MemoryMatchRepository();
+      final controller = MatchController(repository, const ScoreRuleEngine());
+      addTearDown(controller.dispose);
+      await controller.start(initial);
+      final failure = StateError('保存失敗');
+      repository.saveError = failure;
+
+      await edit.value(controller);
+      expect(controller.state.error, same(failure));
+      expect(repository.record, same(initial));
+
+      repository.saveError = null;
+      await controller.load();
+      expect(controller.state.valueOrNull, same(initial));
+      await edit.value(controller);
+      expect(repository.record!.revision, 1);
+      expect(controller.state.hasError, isFalse);
+    });
+  }
+
+  for (final doubleFault in [false, true]) {
+    test('${doubleFault ? 'ダブルフォルト' : '通常得点'}による完了は保存後に一度だけ通知する', () async {
+      final repository = MemoryMatchRepository();
+      var completions = 0;
+      final controller = MatchController(
+        repository,
+        const ScoreRuleEngine(),
+        onCompleted: () {
+          expect(repository.record!.completedAt, isNotNull);
+          completions++;
+        },
+      );
+      addTearDown(controller.dispose);
+      await controller.start(
+        matchRecord(
+          format: MatchFormatPreset.practiceThree,
+          winners: List.filled(7, Side.mine),
+        ).copyWith(
+          currentServeAttempt: doubleFault
+              ? ServeAttempt.second
+              : ServeAttempt.first,
+        ),
+      );
+
+      if (doubleFault) {
+        expect(
+          await controller.recordFault(),
+          ServeFaultOutcome.doubleFaultRecorded,
+        );
+      } else {
+        await controller.addPoint(Side.mine);
+      }
+      final completed = repository.record!;
+      expect(completed.events, hasLength(8));
+      expect(completed.revision, 1);
+      expect(completions, 1);
+      await controller.addPoint(Side.mine);
+      await controller.recordFault();
+      await controller.undo();
+      await controller.setPointReason(
+        completed.events.last.id,
+        PointReason.other,
+      );
+      expect(repository.record, same(completed));
+      expect(completions, 1);
+    });
+  }
 
   test('得点は保存され、取消でイベント履歴を1件戻す', () async {
     final repository = MemoryMatchRepository();
     final controller = MatchController(repository, const ScoreRuleEngine());
-    await controller.start(initialRecord());
+    await controller.start(matchRecord());
     await controller.addPoint(Side.mine, reason: PointReason.rallyWinner);
     expect(repository.record!.events, hasLength(1));
     expect(repository.record!.events.single.reason, PointReason.rallyWinner);
@@ -119,7 +179,7 @@ void main() {
   test('未完了試合は再読込みできる', () async {
     final repository = MemoryMatchRepository();
     final first = MatchController(repository, const ScoreRuleEngine());
-    await first.start(initialRecord());
+    await first.start(matchRecord());
     await first.addPoint(Side.opponent);
 
     final restored = MatchController(repository, const ScoreRuleEngine());
@@ -130,7 +190,7 @@ void main() {
   test('イベントIDを指定して得点理由を更新する', () async {
     final repository = MemoryMatchRepository();
     final controller = MatchController(repository, const ScoreRuleEngine());
-    await controller.start(initialRecord());
+    await controller.start(matchRecord());
     final firstId = await controller.addPoint(Side.mine);
     await controller.addPoint(Side.opponent);
     await controller.setPointReason(firstId!, PointReason.serviceAce);
@@ -142,7 +202,7 @@ void main() {
   test('1stフォルトは2ndへ進み、次の通常得点にサービス回数を保存する', () async {
     final repository = MemoryMatchRepository();
     final controller = MatchController(repository, const ScoreRuleEngine());
-    await controller.start(initialRecord());
+    await controller.start(matchRecord());
 
     final outcome = await controller.recordFault();
     expect(outcome, ServeFaultOutcome.advancedToSecond);
@@ -157,7 +217,7 @@ void main() {
   test('2ndフォルトはレシーブ側へ得点とダブルフォルト理由を保存する', () async {
     final repository = MemoryMatchRepository();
     final controller = MatchController(repository, const ScoreRuleEngine());
-    await controller.start(initialRecord());
+    await controller.start(matchRecord());
 
     await controller.recordFault();
     final outcome = await controller.recordFault();
@@ -173,7 +233,7 @@ void main() {
   test('2ndで終了したポイントを取り消すと2ndへ戻り、再取消で1stへ戻る', () async {
     final repository = MemoryMatchRepository();
     final controller = MatchController(repository, const ScoreRuleEngine());
-    await controller.start(initialRecord());
+    await controller.start(matchRecord());
     await controller.recordFault();
     await controller.addPoint(Side.mine);
 
@@ -189,7 +249,7 @@ void main() {
   test('サービス状況と矛盾する得点理由は保存しない', () async {
     final repository = MemoryMatchRepository();
     final controller = MatchController(repository, const ScoreRuleEngine());
-    await controller.start(initialRecord());
+    await controller.start(matchRecord());
 
     expect(
       await controller.addPoint(Side.mine, reason: PointReason.returnAce),
@@ -202,25 +262,10 @@ void main() {
     expect(repository.record!.events.single.reason, isNull);
   });
 
-  test('保存中のフォルト二重入力を無視する', () async {
-    final repository = BlockingMatchRepository();
-    final controller = MatchController(repository, const ScoreRuleEngine());
-    await controller.start(initialRecord());
-    repository.saveGate = Completer<void>();
-
-    final first = controller.recordFault();
-    expect(await controller.recordFault(), isNull);
-    repository.saveGate!.complete();
-
-    expect(await first, ServeFaultOutcome.advancedToSecond);
-    expect(repository.record!.events, isEmpty);
-    expect(repository.record!.currentServeAttempt, ServeAttempt.second);
-  });
-
   test('得点・フォルト・理由・取消ごとにrevisionを増やす', () async {
     final repository = MemoryMatchRepository();
     final controller = MatchController(repository, const ScoreRuleEngine());
-    await controller.start(initialRecord());
+    await controller.start(matchRecord());
 
     await controller.recordFault();
     expect(repository.record!.revision, 1);
@@ -240,7 +285,7 @@ void main() {
       const ScoreRuleEngine(),
       watchGateway: gateway,
     );
-    await controller.start(initialRecord());
+    await controller.start(matchRecord());
 
     expect(await controller.handoffToWatch(), isTrue);
     expect(repository.record!.scoreInputOwner, ScoreInputOwner.watch);
@@ -259,7 +304,7 @@ void main() {
       const ScoreRuleEngine(),
       watchGateway: gateway,
     );
-    await controller.start(initialRecord());
+    await controller.start(matchRecord());
 
     expect(await controller.handoffToWatch(), isFalse);
     expect(repository.record!.scoreInputOwner, ScoreInputOwner.phone);
@@ -273,7 +318,7 @@ void main() {
       const ScoreRuleEngine(),
       watchGateway: gateway,
     );
-    await controller.start(initialRecord());
+    await controller.start(matchRecord());
     await controller.handoffToWatch();
     final handedOff = repository.record!;
 
@@ -318,7 +363,7 @@ void main() {
       const ScoreRuleEngine(),
       watchGateway: gateway,
     );
-    await controller.start(initialRecord());
+    await controller.start(matchRecord());
     await controller.handoffToWatch();
     final watchRecord = repository.record!;
     gateway.phoneControlResponse = WatchSyncEnvelope(

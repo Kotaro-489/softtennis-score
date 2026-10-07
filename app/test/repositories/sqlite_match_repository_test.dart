@@ -6,6 +6,8 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:softtennis_score/models/match_models.dart';
 import 'package:softtennis_score/repositories/sqlite_match_repository.dart';
 
+import '../support/match_fixtures.dart';
+
 void main() {
   sqfliteFfiInit();
   final factory = databaseFactoryFfi;
@@ -18,30 +20,7 @@ void main() {
     bool deuceEnabled = true,
     int revision = 0,
     String? watchSessionId,
-  }) => MatchRecord(
-    id: 'match-1',
-    myPair: const Pair(
-      id: 'mine',
-      name: '自分ペア',
-      players: [
-        Player(id: 'm1', name: 'A'),
-        Player(id: 'm2', name: 'B'),
-      ],
-    ),
-    opponentPair: const Pair(
-      id: 'opponent',
-      name: '相手ペア',
-      players: [
-        Player(id: 'o1', name: 'C'),
-        Player(id: 'o2', name: 'D'),
-      ],
-    ),
-    format: MatchFormatPreset.officialFive,
-    deuceEnabled: deuceEnabled,
-    firstServingSide: Side.mine,
-    firstServerId: 'm1',
-    firstReceiverId: 'o1',
-    createdAt: DateTime(2026),
+  }) => matchRecord(id: 'match-1', deuceEnabled: deuceEnabled).copyWith(
     currentServeAttempt: currentServeAttempt,
     scoreInputOwner: scoreInputOwner,
     revision: revision,

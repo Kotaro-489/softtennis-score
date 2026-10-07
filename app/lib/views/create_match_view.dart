@@ -24,6 +24,15 @@ class _CreateMatchViewState extends ConsumerState<CreateMatchView> {
   var _serverIndex = 0;
   var _receiverIndex = 0;
 
+  List<TextEditingController> get _fields => [
+    _myPair,
+    _opponentPair,
+    _myFirst,
+    _mySecond,
+    _opponentFirst,
+    _opponentSecond,
+  ];
+
   @override
   void initState() {
     super.initState();
@@ -40,29 +49,15 @@ class _CreateMatchViewState extends ConsumerState<CreateMatchView> {
 
   @override
   void dispose() {
-    for (final controller in [
-      _myPair,
-      _opponentPair,
-      _myFirst,
-      _mySecond,
-      _opponentFirst,
-      _opponentSecond,
-    ]) {
+    for (final controller in _fields) {
       controller.dispose();
     }
     super.dispose();
   }
 
+  /// 必須入力を検証し、自分ペアの初期値と開始設定を保存する。
   Future<void> _start() async {
-    final required = [
-      _myPair,
-      _opponentPair,
-      _myFirst,
-      _mySecond,
-      _opponentFirst,
-      _opponentSecond,
-    ];
-    if (required.any((controller) => controller.text.trim().isEmpty)) {
+    if (_fields.any((controller) => controller.text.trim().isEmpty)) {
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('ペア名と4選手名を入力してください。')));
       return;
@@ -123,51 +118,9 @@ class _CreateMatchViewState extends ConsumerState<CreateMatchView> {
       child: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          Text('自分ペア', style: Theme.of(context).textTheme.titleMedium),
-          TextField(
-            controller: _myPair,
-            decoration: const InputDecoration(labelText: 'ペア名'),
-          ),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _myFirst,
-                  decoration: const InputDecoration(labelText: '選手1'),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: TextField(
-                  controller: _mySecond,
-                  decoration: const InputDecoration(labelText: '選手2'),
-                ),
-              ),
-            ],
-          ),
+          _pairFields('自分ペア', _myPair, _myFirst, _mySecond),
           const SizedBox(height: 20),
-          Text('相手ペア', style: Theme.of(context).textTheme.titleMedium),
-          TextField(
-            controller: _opponentPair,
-            decoration: const InputDecoration(labelText: 'ペア名'),
-          ),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _opponentFirst,
-                  decoration: const InputDecoration(labelText: '選手1'),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: TextField(
-                  controller: _opponentSecond,
-                  decoration: const InputDecoration(labelText: '選手2'),
-                ),
-              ),
-            ],
-          ),
+          _pairFields('相手ペア', _opponentPair, _opponentFirst, _opponentSecond),
           const SizedBox(height: 20),
           DropdownButtonFormField(
             initialValue: _format,
@@ -214,25 +167,15 @@ class _CreateMatchViewState extends ConsumerState<CreateMatchView> {
           ),
           const SizedBox(height: 12),
           Text('最初のサーバー', style: Theme.of(context).textTheme.labelLarge),
-          SegmentedButton<int>(
-            segments: const [
-              ButtonSegment(value: 0, label: Text('選手1')),
-              ButtonSegment(value: 1, label: Text('選手2')),
-            ],
-            selected: {_serverIndex},
-            onSelectionChanged: (value) =>
-                setState(() => _serverIndex = value.first),
+          _playerSelector(
+            _serverIndex,
+            (value) => setState(() => _serverIndex = value),
           ),
           const SizedBox(height: 8),
           Text('最初のレシーバー', style: Theme.of(context).textTheme.labelLarge),
-          SegmentedButton<int>(
-            segments: const [
-              ButtonSegment(value: 0, label: Text('選手1')),
-              ButtonSegment(value: 1, label: Text('選手2')),
-            ],
-            selected: {_receiverIndex},
-            onSelectionChanged: (value) =>
-                setState(() => _receiverIndex = value.first),
+          _playerSelector(
+            _receiverIndex,
+            (value) => setState(() => _receiverIndex = value),
           ),
           const SizedBox(height: 28),
           FilledButton(
@@ -246,4 +189,48 @@ class _CreateMatchViewState extends ConsumerState<CreateMatchView> {
       ),
     ),
   );
+
+  /// 両ペアに同じ入力項目と余白を適用する。
+  Widget _pairFields(
+    String title,
+    TextEditingController pair,
+    TextEditingController first,
+    TextEditingController second,
+  ) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Text(title, style: Theme.of(context).textTheme.titleMedium),
+      TextField(
+        controller: pair,
+        decoration: const InputDecoration(labelText: 'ペア名'),
+      ),
+      Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: first,
+              decoration: const InputDecoration(labelText: '選手1'),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: TextField(
+              controller: second,
+              decoration: const InputDecoration(labelText: '選手2'),
+            ),
+          ),
+        ],
+      ),
+    ],
+  );
+
+  Widget _playerSelector(int selected, ValueChanged<int> onChanged) =>
+      SegmentedButton<int>(
+        segments: const [
+          ButtonSegment(value: 0, label: Text('選手1')),
+          ButtonSegment(value: 1, label: Text('選手2')),
+        ],
+        selected: {selected},
+        onSelectionChanged: (value) => onChanged(value.first),
+      );
 }
