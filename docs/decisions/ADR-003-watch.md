@@ -11,12 +11,15 @@ iPhoneは既存Flutterアプリ、Apple WatchはSwiftUI製コンパニオンと�
 - 試合作成: iPhoneのみ
 - 試合中の編集: 明示的な引き渡し後はWatchのみ
 - Watch単体での履歴・集計・選手編集: 対象外
+- 同期Envelope: スキーマv2。試合の`deuceEnabled`をWatchへ渡し、DartとSwiftで同じ得点判定を行う
 
 ## 一貫性
 
 `watchSessionId`が一致し、現在値より新しい`revision`だけをiPhoneへ反映する。通常復帰の最新状態確認に限り同一revisionを受け付ける。iPhoneがSQLiteへ保存した後にのみACKを返す。
 
 強制復帰は未同期データ消失の警告後に実行し、古いWatchセッションを無効化する。同じ試合をiPhoneとWatchから同時編集しない。
+
+旧スキーマのWatchは引き渡しを受け付けず、iPhone側の編集権を維持する。旧試合JSONに`deuceEnabled`がない場合は、3ゲームを「なし」、5・7・9ゲームを「あり」で復元する。
 
 ## オフライン
 

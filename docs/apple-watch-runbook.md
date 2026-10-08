@@ -2,10 +2,10 @@
 
 ## 開発環境
 
-1. macOS 15.7.9へXcode 26.3をインストールする。
+1. Xcode 26.3を使用し、`.fvmrc`のFlutter 3.47.2を準備する。
 2. Xcode Settings > PlatformsからwatchOSを追加する。
-3. `Runner.xcworkspace`を開き、RunnerとSoftTennisScoreWatchへ同じDevelopment Teamを設定する。
-4. iPhoneとApple Watch Series 3をペアリングし、両方で開発者モードを有効にする。
+3. `app/`で`flutter pub get`を実行してから`ios/Runner.xcworkspace`を開き、RunnerとSoftTennisScoreWatchへ同じDevelopment Teamを設定する。`flutter clean`後も必ずpub getを再実行する。
+4. iPhoneとApple Watch Series 3をペアリングする。利用するOSに開発者モードの設定がある場合は有効にする。
 5. Runnerスキームでペア端末を選び、iPhoneから実行する。
 
 ## 日常の動作確認
@@ -18,6 +18,8 @@
 6. スコアが復元されることを確認して通信を戻す。
 7. iPhoneのSQLiteへ最新スコアが反映され、重複加点されないことを確認する。
 8. Watchから試合を完了し、iPhoneの履歴へ保存されるまでWatch側データが保持されることを確認する。
+9. 3ゲームのデュースあり、5ゲームのデュースなしをiPhoneで作り、それぞれWatchへ引き渡す。通常ゲームの3-3とファイナルゲームの6-6から、設定どおりの決着になることを確認する。Watch画面にはデュース設定を表示しない。
+10. 古い同期スキーマのWatchに引き渡せない場合、iPhoneの得点操作が引き続き可能なことを確認する。
 
 ## 38mm操作性
 
