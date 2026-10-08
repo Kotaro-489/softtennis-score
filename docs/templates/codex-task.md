@@ -16,20 +16,23 @@ docs/specs/<spec>/design.md
 
 tasks.mdの指定タスクのみ実装する。
 
-## 必須条件
+## 実装時の条件
 
 - MVVM
 - Riverpod
 - Repository Pattern
 - Null Safety
+- 既存の未コミット差分を保護し、変更に対応するテストを追加・更新する
+- 保存・同期形式の変更では旧データの復元とWatch側との互換性を確認する
 
 ## 完了条件
 
-実装後に実行。
+コード変更後にリポジトリ直下で実行。
 
 ```bash
-flutter analyze
-flutter test
+./scripts/verify.sh
 ```
 
-Spec外の実装は禁止。
+画面導線の変更は`app/`で`flutter test integration_test -d macos`も実行する。Watch関連はCIのSwiftテスト、Watchビルド、iPhoneアーカイブを確認し、実機未確認項目はPRに明記する。
+
+Spec外へ影響が広がる場合は、先にSpec・Design・Tasksへ変更理由と受け入れ条件を反映する。
